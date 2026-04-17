@@ -71,10 +71,24 @@ export async function POST(request, { params }) {
     userContent = buildPart3StartPrompt();
     phase = 'part3';
     await serverSupabase.from('sessions').update({ status: 'part3' }).eq('id', sessionId);
+    // Save the start prompt so re-entry sees it in conversation history
+    await serverSupabase.from('session_messages').insert({
+      session_id: sessionId,
+      role: 'user',
+      content: userContent,
+      phase: 'part3',
+    });
   } else if (action === 'debrief') {
     userContent = buildPart4Prompt();
     phase = 'part4';
     await serverSupabase.from('sessions').update({ status: 'part4' }).eq('id', sessionId);
+    // Save the debrief prompt so history is complete
+    await serverSupabase.from('session_messages').insert({
+      session_id: sessionId,
+      role: 'user',
+      content: userContent,
+      phase: 'part4',
+    });
   } else {
     userContent = message;
     // Save user message

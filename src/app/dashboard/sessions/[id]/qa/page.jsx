@@ -15,6 +15,19 @@ const PERSONAS = {
 };
 const DEFAULT_PERSONA = { name: 'Panel', title: 'Buyer Panel', initials: 'P', color: 'bg-muted/15 text-muted border-border' };
 
+function getLastPanelSpeaker(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant' && messages[i].speaker) {
+      return messages[i].speaker;
+    }
+  }
+  return 'panel_lead';
+}
+
+function countQAPairs(messages) {
+  return messages.filter(m => m.role === 'user' && m.content !== messages[0]?.content).length;
+}
+
 // ─── Persona badge ────────────────────────────────────────────────────────────
 
 function PersonaBadge({ speakerKey, streaming }) {
@@ -66,6 +79,35 @@ function Message({ role, content, speaker, isStreaming }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Resume banner ────────────────────────────────────────────────────────────
+
+function ResumeBanner({ qaCount, lastSpeaker, onDebrief, streaming }) {
+  const persona = PERSONAS[lastSpeaker] || DEFAULT_PERSONA;
+  return (
+    <div className="glass rounded-xl px-4 py-3 border-primary/20 flex items-center justify-between gap-4 mb-6">
+      <div className="flex items-center gap-3">
+        <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+        <div>
+          <p className="text-xs font-semibold text-foreground">
+            Resuming session — {qaCount} exchange{qaCount !== 1 ? 's' : ''} completed
+          </p>
+          <p className="text-xs text-muted mt-0.5">
+            Last speaker: <span className={`font-medium ${persona.color.split(' ')[1]}`}>{persona.name}</span>
+            {' '}· Continue your answer below or end the session for a debrief.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onDebrief}
+        disabled={streaming}
+        className="text-xs text-muted hover:text-danger transition-colors shrink-0 disabled:opacity-40"
+      >
+        End & Debrief
+      </button>
     </div>
   );
 }
@@ -126,10 +168,7 @@ function VoiceMode({ sessionId, session, onEnd }) {
       dcRef.current = dc;
 
       dc.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data);
-          handleRealtimeEvent(event);
-        } catch { /* ignore */ }
+        try { handleRealtimeEvent(JSON.parse(e.data)); } catch { /* ignore */ }
       };
 
       dc.onopen = () => {
@@ -148,14 +187,9 @@ function VoiceMode({ sessionId, session, onEnd }) {
         body: offer.sdp,
       });
 
-      if (!sdpRes.ok) {
-        toast.error('WebRTC negotiation failed');
-        setStatus('error');
-        return;
-      }
+      if (!sdpRes.ok) { toast.error('WebRTC negotiation failed'); setStatus('error'); return; }
 
-      const answer = { type: 'answer', sdp: await sdpRes.text() };
-      await pc.setRemoteDescription(answer);
+      await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
       setStatus('connected');
     } catch (err) {
       console.error('Voice connect error:', err);
@@ -227,7 +261,6 @@ function VoiceMode({ sessionId, session, onEnd }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Voice status bar */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-border/60">
         <PersonaBadge speakerKey={currentSpeaker} streaming={isSpeaking} />
         <div className="flex items-center gap-4">
@@ -243,17 +276,13 @@ function VoiceMode({ sessionId, session, onEnd }) {
             </div>
           )}
           {status === 'connected' && (
-            <button
-              onClick={handleEnd}
-              className="text-xs text-muted hover:text-danger transition-colors"
-            >
+            <button onClick={handleEnd} className="text-xs text-muted hover:text-danger transition-colors">
               End session
             </button>
           )}
         </div>
       </div>
 
-      {/* Connect screen */}
       {status === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center px-6">
           <div className={`w-24 h-24 rounded-2xl border-2 flex items-center justify-center text-2xl font-bold ${persona.color}`}>
@@ -262,7 +291,7 @@ function VoiceMode({ sessionId, session, onEnd }) {
           <div>
             <p className="text-base font-semibold text-foreground">{persona.name} is ready</p>
             <p className="text-sm text-muted mt-1.5 leading-relaxed max-w-xs mx-auto">
-              Your microphone will be used for live conversation. Make sure you're in a quiet space.
+              Your microphone will be used for live conversation. Prior Q&A history is loaded — the panel will pick up from where you left off.
             </p>
           </div>
           <button onClick={connect} className="btn-primary px-8 py-3 text-base rounded-xl">
@@ -287,7 +316,6 @@ function VoiceMode({ sessionId, session, onEnd }) {
         </div>
       )}
 
-      {/* Live transcript */}
       {status === 'connected' && (
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
           {transcript.length === 0 && (
@@ -317,6 +345,7 @@ export default function QAPage() {
   const [mode, setMode] = useState('text');
 
   const [started, setStarted] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [messages, setMessages] = useState([]);
   const [answer, setAnswer] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -327,11 +356,45 @@ export default function QAPage() {
   const textareaRef = useRef(null);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/sessions/${id}`);
-    if (res.status === 401) { router.replace('/login'); return; }
-    if (!res.ok) { router.replace('/dashboard'); return; }
-    const { session } = await res.json();
+    const [sessionRes, messagesRes] = await Promise.all([
+      fetch(`/api/sessions/${id}`),
+      fetch(`/api/sessions/${id}/messages`),
+    ]);
+
+    if (sessionRes.status === 401) { router.replace('/login'); return; }
+    if (!sessionRes.ok) { router.replace('/dashboard'); return; }
+
+    const { session } = await sessionRes.json();
     setSession(session);
+
+    // Restore existing messages if session has Q&A history
+    if (messagesRes.ok) {
+      const { messages: existing } = await messagesRes.json();
+      const part3Messages = (existing || []).filter(
+        m => m.phase === 'part3' || m.phase === 'part4'
+      );
+
+      if (part3Messages.length > 0) {
+        // Restore conversation state
+        const displayMessages = part3Messages.filter(
+          m => m.role === 'user' || m.role === 'assistant'
+        );
+        setMessages(displayMessages);
+        setStarted(true);
+
+        // If session is in debrief/complete state, mark as ended
+        if (session.status === 'part4' || session.status === 'complete') {
+          setEnded(true);
+        } else {
+          setIsResuming(true);
+        }
+
+        // Restore last active speaker
+        const lastSpeaker = getLastPanelSpeaker(displayMessages);
+        setCurrentSpeaker(lastSpeaker);
+      }
+    }
+
     setLoading(false);
   }, [id, router]);
 
@@ -343,8 +406,11 @@ export default function QAPage() {
 
   async function streamResponse(action, userMessage) {
     setStreaming(true);
+    setIsResuming(false);
     const streamId = Date.now();
-    setMessages(prev => [...prev, { id: streamId, role: 'assistant', content: '', speaker: currentSpeaker, streaming: true }]);
+    setMessages(prev => [...prev, {
+      id: streamId, role: 'assistant', content: '', speaker: currentSpeaker, streaming: true,
+    }]);
 
     try {
       const body = { action, activeSpeaker: currentSpeaker };
@@ -424,6 +490,7 @@ export default function QAPage() {
   async function handleDebrief() {
     if (!confirm('End the Q&A and generate the full debrief?')) return;
     setEnded(true);
+    setIsResuming(false);
     await streamResponse('debrief');
   }
 
@@ -434,6 +501,9 @@ export default function QAPage() {
       </div>
     );
   }
+
+  // Count real Q&A exchanges (exclude the system start_qa message)
+  const qaCount = messages.filter(m => m.role === 'user').length;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -499,7 +569,9 @@ export default function QAPage() {
         <>
           <main className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto px-6 py-8">
-              {!started ? (
+
+              {/* Start screen — only shown if no history */}
+              {!started && (
                 <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-7 animate-fade-in">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Part 3</p>
@@ -511,7 +583,6 @@ export default function QAPage() {
                     </p>
                   </div>
 
-                  {/* Persona roster */}
                   <div className="glass rounded-2xl p-4 flex flex-wrap justify-center gap-2 max-w-md">
                     {Object.entries(PERSONAS).slice(0, 5).map(([key, p]) => (
                       <span key={key} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${p.color}`}>
@@ -521,31 +592,41 @@ export default function QAPage() {
                   </div>
 
                   <div className="flex gap-3">
-                    <button
-                      onClick={handleStart}
-                      className="btn-primary px-7 py-2.5 text-sm rounded-xl"
-                    >
+                    <button onClick={handleStart} className="btn-primary px-7 py-2.5 text-sm rounded-xl">
                       Begin Q&A (Text)
                     </button>
-                    <button
-                      onClick={() => setMode('voice')}
-                      className="btn-ghost px-7 py-2.5 text-sm rounded-xl"
-                    >
+                    <button onClick={() => setMode('voice')} className="btn-ghost px-7 py-2.5 text-sm rounded-xl">
                       Begin Q&A (Voice)
                     </button>
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {/* Resumed / active conversation */}
+              {started && (
                 <div className="space-y-6 pb-4">
-                  {messages.map(msg => (
-                    <Message
-                      key={msg.id}
-                      role={msg.role}
-                      content={msg.content}
-                      speaker={msg.speaker}
-                      isStreaming={msg.streaming}
+                  {/* Resume context banner */}
+                  {isResuming && (
+                    <ResumeBanner
+                      qaCount={qaCount}
+                      lastSpeaker={currentSpeaker}
+                      onDebrief={handleDebrief}
+                      streaming={streaming}
                     />
-                  ))}
+                  )}
+
+                  {messages
+                    .filter(m => m.role === 'user' || m.role === 'assistant')
+                    .map(msg => (
+                      <Message
+                        key={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        speaker={msg.speaker}
+                        isStreaming={msg.streaming}
+                      />
+                    ))
+                  }
                   <div ref={bottomRef} />
                 </div>
               )}
@@ -593,10 +674,7 @@ export default function QAPage() {
             <div className="border-t border-border/60 shrink-0">
               <div className="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between gap-4">
                 <p className="text-sm text-muted">Session complete. Your debrief is above.</p>
-                <Link
-                  href="/dashboard"
-                  className="btn-ghost text-xs"
-                >
+                <Link href="/dashboard" className="btn-ghost text-xs">
                   Back to Dashboard
                 </Link>
               </div>

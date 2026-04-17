@@ -42,16 +42,48 @@ export async function POST(request, { params }) {
     .eq('session_id', sessionId)
     .eq('processing_status', 'completed');
 
+  // Get existing Q&A conversation history
+  const { data: existingMessages } = await supabase
+    .from('session_messages')
+    .select('role, content, speaker, phase, is_voice')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
   const documentContext = buildDocumentContext(documents || []);
   const sessionWithDocs = { ...session, materials_text: documentContext };
 
   // Build the voice session system prompt
   const basePrompt = buildSystemPrompt(sessionWithDocs);
 
+  // Build prior Q&A context for the voice session
+  const priorMessages = (existingMessages || []).filter(
+    m => (m.role === 'user' || m.role === 'assistant') && m.phase === 'part3'
+  );
+
+  let priorQAContext = '';
+  if (priorMessages.length > 0) {
+    const lastN = priorMessages.slice(-10); // last 10 exchanges for context
+    const summary = lastN.map(m => {
+      const label = m.role === 'user' ? 'MANAGEMENT' : `PANEL (${m.speaker || 'panel'})`;
+      const snippet = m.content.length > 400 ? m.content.substring(0, 400) + '…' : m.content;
+      return `[${label}]: ${snippet}`;
+    }).join('\n\n');
+
+    priorQAContext = `
+===== PRIOR Q&A HISTORY (${priorMessages.length} exchanges completed) =====
+This session has already covered the following ground. Do NOT repeat questions already asked. Pick up naturally from where the conversation left off, or move to the next priority area.
+
+${summary}
+
+INSTRUCTION: The above questions have already been asked and answered. Continue the Q&A by probing a NEW area or following up on a weakness identified above. Reference prior answers where relevant.
+==========`;
+  }
+
   const voiceInstructions = `${basePrompt}
 
 ===== ANALYSIS CONTEXT (from prior document review) =====
 ${session.part2_output || 'No prior analysis available. Conduct the Q&A based on available materials.'}
+${priorQAContext}
 
 ===== INSTRUCTIONS FOR VOICE SESSION =====
 You are now conducting the live mock management presentation Q&A (Part 3).
@@ -66,7 +98,7 @@ Rules for this voice session:
 - Reference specific points from the analysis above to make questions targeted.
 - If the user says "stop", "end now", or "debrief now", acknowledge and end the Q&A.
 - Do NOT use markdown, bullet points, or formatting — speak naturally.
-- Begin by introducing yourself briefly and asking your first question.`;
+- ${priorMessages.length > 0 ? `There are already ${priorMessages.length} exchanges on record. Briefly acknowledge this is a continuation and ask your next question — do NOT start over from the beginning.` : 'Begin by introducing yourself briefly and asking your first question.'}`;
 
   const body = await request.json().catch(() => ({}));
   const persona = body.persona || 'panel_lead';
