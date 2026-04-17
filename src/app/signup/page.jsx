@@ -43,12 +43,10 @@ export default function SignupPage() {
       }
 
       if (data.message) {
-        // Email confirmation required
         setConfirmationSent(true);
         return;
       }
 
-      // Auto-signed in (email confirmation disabled)
       router.push('/dashboard');
     } catch {
       toast.error('Something went wrong. Please try again.');
@@ -59,22 +57,26 @@ export default function SignupPage() {
 
   if (confirmationSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="w-full max-w-md text-center">
-          <div className="glass-strong rounded-xl p-10 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      <div className="min-h-screen bg-dots flex items-center justify-center px-4">
+        <div className="w-full max-w-sm animate-slide-up">
+          <div className="glass-strong rounded-2xl p-10 text-center space-y-5">
+            <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-foreground">Check your email</h2>
-            <p className="text-muted text-sm leading-relaxed">
-              We sent a confirmation link to <span className="text-foreground font-medium">{email}</span>.
-              Click it to activate your account, then sign in.
-            </p>
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Check your email</h2>
+              <p className="text-sm text-muted mt-2 leading-relaxed">
+                Confirmation link sent to{' '}
+                <span className="text-foreground-dim font-medium">{email}</span>.
+                Click it to activate your account.
+              </p>
+            </div>
             <Link
               href="/login"
-              className="inline-block mt-4 text-sm text-primary hover:text-primary-light transition-colors"
+              className="inline-block text-sm text-primary hover:text-primary-light transition-colors font-medium"
             >
               Back to sign in
             </Link>
@@ -85,22 +87,25 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
+    <div className="min-h-screen bg-dots flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm animate-slide-up">
+
+        {/* Wordmark */}
         <div className="text-center mb-10">
-          <Link href="/" className="inline-block">
-            <h1 className="text-3xl font-bold text-foreground tracking-tight">DealReady</h1>
+          <Link href="/" className="inline-block group">
+            <span className="text-2xl font-bold text-foreground tracking-tight group-hover:text-primary transition-colors">
+              DealReady
+            </span>
           </Link>
           <p className="mt-2 text-sm text-muted">Create your account</p>
         </div>
 
         {/* Card */}
-        <div className="glass-strong rounded-xl p-8">
+        <div className="glass-strong rounded-2xl p-8">
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
-                Email address
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="block text-xs font-semibold text-muted uppercase tracking-wider">
+                Email
               </label>
               <input
                 id="email"
@@ -110,13 +115,13 @@ export default function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
-                className="w-full px-4 py-2.5 rounded-lg bg-surface border border-border text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50 transition"
+                className="input"
                 placeholder="you@company.com"
               />
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1.5">
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="block text-xs font-semibold text-muted uppercase tracking-wider">
                 Password
               </label>
               <input
@@ -127,13 +132,13 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
-                className="w-full px-4 py-2.5 rounded-lg bg-surface border border-border text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50 transition"
+                className="input"
                 placeholder="Min. 8 characters"
               />
             </div>
 
-            <div>
-              <label htmlFor="confirm-password" className="block text-sm font-medium text-foreground mb-1.5">
+            <div className="space-y-1.5">
+              <label htmlFor="confirm-password" className="block text-xs font-semibold text-muted uppercase tracking-wider">
                 Confirm password
               </label>
               <input
@@ -144,7 +149,7 @@ export default function SignupPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={loading}
-                className="w-full px-4 py-2.5 rounded-lg bg-surface border border-border text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50 transition"
+                className="input"
                 placeholder="••••••••"
               />
             </div>
@@ -152,21 +157,25 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed transition"
+              className="btn-primary w-full mt-2"
             >
-              {loading ? 'Creating account…' : 'Create account'}
+              {loading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Creating account…
+                </>
+              ) : 'Create account'}
             </button>
           </form>
 
-          <p className="mt-5 text-xs text-center text-muted/70 leading-relaxed">
-            By creating an account you agree that your documents are stored encrypted
-            and only accessible to you.
+          <p className="mt-5 text-xs text-center text-muted/60 leading-relaxed">
+            Documents stored encrypted and accessible only to you.
           </p>
         </div>
 
         <p className="text-center mt-6 text-sm text-muted">
           Already have an account?{' '}
-          <Link href="/login" className="text-primary hover:text-primary-light transition-colors">
+          <Link href="/login" className="text-primary hover:text-primary-light transition-colors font-medium">
             Sign in
           </Link>
         </p>
