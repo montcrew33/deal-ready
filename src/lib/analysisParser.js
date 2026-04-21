@@ -1,272 +1,484 @@
-// analysisParser.js
-// Pure JS — no imports. Safe for client-side use via useMemo.
-// Parses the Part 2 markdown output into structured data for the tabbed UI.
-// Every section falls back gracefully — parsing failures never throw.
-
 /**
- * Split raw text into named sections by detecting header patterns like:
- *   A. SECTION TITLE
- *   ## SECTION TITLE
- *   **SECTION TITLE**
- * Returns an object: { sectionKey: rawText }
+ * analysisParser.js
+ *
+ * Pure JS — no imports. Safe for use in useMemo on the client.
+ *
+ * The Part 2 prompt asks Claude to produce four sections:
+ *   A. Buyer Risk Map       — numbered vulnerability items with Severity + labeled fields
+ *   B. Buyer Persona Lens   — one block per named persona with sub-fields
+ *   C. Positioning Guidance — strongest themes, themes needing work, narrative, proof points, mistakes
+ *   D. Priority Attack Zones — numbered zones with why/wrong/strong sub-sections
+ *
+ * Claude wraps numbered list items as "**1. Title**" (bold wraps whole item),
+ * uses "- **Field:** value" for sub-fields, and puts persona names in bold headers.
  */
-function splitSections(text) {
-  const sections = {};
 
-  // Patterns that mark section boundaries (case-insensitive)
-  const SECTION_PATTERNS = [
-    { key: 'riskMap',     re: /^[A-Z][\.\)]\s*(BUYER RISK MAP|RISK MAP|RISK PROFILE|KEY RISKS?|RISK REGISTER)/im },
-    { key: 'buyerPanel',  re: /^[A-Z][\.\)]\s*(BUYER PANEL|PANEL|PERSONA LENS|BUYER PERSONAS?|PANEL COMPOSITION)/im },
-    { key: 'positioning', re: /^[A-Z][\.\)]\s*(POSITIONING|MANAGEMENT POSITIONING|NARRATIVE|RECOMMENDED POSITIONING)/im },
-    { key: 'attackZones', re: /^[A-Z][\.\)]\s*(ATTACK ZONES?|PRIORITY ATTACK|PRIORITY QUESTION ZONES?|ATTACK VECTORS?|QUESTION ZONES?)/im },
+// ─── Severity helpers ─────────────────────────────────────────────────────────
+
+const SEVERITY_PATTERNS = [
+  { re: /\bcritical\b/i, level: 'critical' },
+  { re: /🔴/,            level: 'critical' },
+  { re: /\bhigh\b/i,     level: 'high' },
+  { re: /🟠/,            level: 'high' },
+  { re: /\bmedium\b|\bmoderate\b/i, level: 'medium' },
+  { re: /🟡/,            level: 'medium' },
+  { re: /\blow\b/i,      level: 'low' },
+  { re: /🟢/,            level: 'low' },
+];
+
+function detectSeverity(text) {
+  // Check the "Severity: X" line first for accuracy
+  const severityLine = text.match(/severity[:\s*_]+(.{1,30})/i)?.[1] || '';
+  const target = severityLine || text.slice(0, 300);
+  for (const { re, level } of SEVERITY_PATTERNS) {
+    if (re.test(target)) return level;
+  }
+  return 'medium';
+}
+
+// ─── Section splitter ─────────────────────────────────────────────────────────
+
+function splitIntoSections(text) {
+  if (!text) return {};
+  const SECTION_KEYS = { A: 'riskMap', B: 'personaLens', C: 'positioning', D: 'attackZones' };
+
+  // Try multiple heading styles per letter, in priority order
+  const HEADING_RES = [
+    /^#{1,3}\s*([A-D])[\.\)]\s+/,      // ## A. Title
+    /^\*\*([A-D])[\.\)]\s+/,           // **A. Title
+    /^([A-D])[\.\)]\s+/,               // A. Title  (plain)
+    /^SECTION\s+([A-D])\b/i,           // SECTION A
   ];
 
-  // Find match positions for each section
   const found = [];
-  for (const { key, re } of SECTION_PATTERNS) {
-    const match = re.exec(text);
-    if (match) {
-      found.push({ key, index: match.index, length: match[0].length });
+  const lines = text.split('\n');
+
+  let charPos = 0;
+  for (const line of lines) {
+    for (const re of HEADING_RES) {
+      const m = re.exec(line);
+      if (m) {
+        const letter = m[1].toUpperCase();
+        if (SECTION_KEYS[letter] && !found.find(f => f.letter === letter)) {
+          found.push({ letter, key: SECTION_KEYS[letter], pos: charPos });
+        }
+        break; // found a match for this line, stop trying other res
+      }
     }
+    charPos += line.length + 1;
   }
 
-  // Sort by position in document
-  found.sort((a, b) => a.index - b.index);
+  found.sort((a, b) => a.pos - b.pos);
 
-  // Slice text between boundaries
+  const sections = {};
   for (let i = 0; i < found.length; i++) {
-    const start = found[i].index;
-    const end = found[i + 1]?.index ?? text.length;
+    const start = found[i].pos;
+    const end = found[i + 1]?.pos ?? text.length;
     sections[found[i].key] = text.slice(start, end).trim();
   }
-
   return sections;
 }
 
-/**
- * Parse individual risk items from a section block.
- * Looks for numbered bold patterns like:
- *   1. **Risk Title** — description
- *   **1. Risk Title**
- * Returns array of { title, description, severity, rawText }
- */
-function parseRiskItems(block) {
-  if (!block) return [];
+// ─── Numbered item splitter ───────────────────────────────────────────────────
 
+/**
+ * Split text into chunks at each numbered list item.
+ * Handles all Claude numbered-item formats:
+ *   **1. Title**          ← bold wraps whole item (most common)
+ *   1. **Title**          ← number plain, title bold
+ *   ### 1. Title          ← heading style
+ *   1. Title              ← plain
+ */
+function splitNumberedItems(text) {
+  if (!text) return [];
+  // Split on newline followed by a numbered item start
+  // The item can optionally start with ** or ###
+  const parts = text.split(/\n(?=\s*(?:\*{1,2}\s*)?\d+[\.\)]\s|\s*#{1,3}\s+\d+[\.\)]\s)/);
+  return parts.map(p => p.trim()).filter(Boolean);
+}
+
+/**
+ * Extract the title from a numbered chunk.
+ * Returns the clean title string (no markdown, no leading number).
+ */
+function extractItemTitle(chunk) {
+  const patterns = [
+    /^\s*\*\*\d+[\.\)]\s+(.+?)\*\*/,           // **1. Title** or **1. Title — Sub**
+    /^\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,           // 1. **Title**
+    /^\s*#{1,3}\s*\d+[\.\)]\s+\*\*(.+?)\*\*/, // ### 1. **Title**
+    /^\s*#{1,3}\s*\d+[\.\)]\s+(.+?)(?:\n|$)/, // ### 1. Title
+    /^\s*\d+[\.\)]\s+(.+?)(?:\n|$)/,           // 1. Title
+  ];
+  for (const re of patterns) {
+    const m = chunk.match(re);
+    if (m) return m[1].replace(/\*\*/g, '').trim();
+  }
+  return '';
+}
+
+// ─── Field extractors ─────────────────────────────────────────────────────────
+
+/** Extract a single labeled field value, e.g. "**Why a buyer cares:** text" */
+function extractField(text, labelVariants) {
+  for (const label of labelVariants) {
+    // Matches "**Label:** value" or "Label: value" on its own line
+    const re = new RegExp(
+      `\\*{0,2}${label}\\*{0,2}[:\\s]+([^\\n]{5,400})`,
+      'i'
+    );
+    const m = re.exec(text);
+    if (m) return m[1].replace(/\*\*/g, '').replace(/^[-•*]\s*/, '').trim();
+  }
+  return '';
+}
+
+/** Extract a bullet list that appears after a labeled header */
+function extractBulletListAfterLabel(text, labelPattern, maxItems = 6) {
+  const labelRe = new RegExp(
+    `\\*{0,2}${labelPattern}\\*{0,2}[:\\s]*(?:\\([^)]+\\))?[:\\s]*\\n?`,
+    'i'
+  );
+  const labelMatch = labelRe.exec(text);
+  if (!labelMatch) return [];
+
+  const afterText = text.slice(labelMatch.index + labelMatch[0].length);
   const items = [];
 
-  // Split on numbered list items: "1.", "2.", etc. at start of line
-  const chunks = block.split(/\n(?=\d+[\.\)]\s)/);
+  for (const line of afterText.split('\n')) {
+    const s = line.trim();
+    if (!s) { if (items.length > 0) break; continue; }
+    // Stop at next bold section header or new numbered item
+    if (/^\*\*[A-Z][\.\)]/.test(s) && items.length > 0) break;
+    if (/^#{1,3}\s/.test(s) && items.length > 0) break;
+    // Bullet or numbered line
+    if (/^[-•*]\s/.test(s) || /^\d+[\.\)]\s/.test(s)) {
+      const rawContent = s.replace(/^[-•*\d\.\)]+\s+/, '');
+      // Stop if this bullet IS a bold section header like "- **What a strong answer requires:**"
+      if (/^\*\*[A-Z].+\*\*:?\s*$/.test(rawContent) && items.length > 0) break;
+      const content = rawContent.replace(/\*\*/g, '').trim();
+      if (content) items.push(content);
+      if (items.length >= maxItems) break;
+    } else if (s && items.length > 0 && !/^\*\*/.test(s)) {
+      // Continuation of last item
+      items[items.length - 1] += ' ' + s.replace(/\*\*/g, '');
+    }
+  }
+  return items.filter(Boolean);
+}
+
+// ─── A. Risk Map ──────────────────────────────────────────────────────────────
+
+export function parseRiskMap(sectionText) {
+  if (!sectionText) return { items: [], infoGaps: [] };
+
+  const chunks = splitNumberedItems(sectionText);
+  const items = [];
 
   for (const chunk of chunks) {
     if (!chunk.trim()) continue;
 
-    // Extract title from bold or first line
-    const titleMatch =
-      chunk.match(/\*\*(.+?)\*\*/) ||
-      chunk.match(/^\d+[\.\)]\s+(.+?)(?:\n|$)/);
+    const rawTitle = extractItemTitle(chunk);
+    if (!rawTitle) continue;
+    // Skip if it looks like a sub-field label, not a risk title
+    if (/^(severity|why|how|what|preparation|buyer|key info)/i.test(rawTitle)) continue;
 
-    const title = titleMatch ? titleMatch[1].replace(/^\d+[\.\)]\s*/, '').trim() : '';
-    if (!title) continue;
+    const severity = detectSeverity(chunk);
 
-    // Detect severity from keywords in the chunk
-    const lower = chunk.toLowerCase();
-    let severity = 'medium';
-    if (/\bcritical\b/.test(lower)) severity = 'critical';
-    else if (/\bhigh\b/.test(lower)) severity = 'high';
-    else if (/\blow\b/.test(lower)) severity = 'low';
-    else if (/\bmedium\b|\bmoderate\b/.test(lower)) severity = 'medium';
+    const buyerFear = extractField(chunk, [
+      'buyer fear', 'buyer.?s fear', 'how a buyer frames it', 'framing'
+    ]);
+    const whyItMatters = extractField(chunk, [
+      'why a buyer cares', 'why buyers care', 'why it matters', 'buyer concern'
+    ]);
+    const conclusion = extractField(chunk, [
+      'what they conclude', 'conclusion', 'if handled poorly'
+    ]);
+    const priority = extractField(chunk, ['preparation priority', 'priority']);
 
-    // Body text: everything after the title line
-    const bodyLines = chunk.split('\n').slice(1).join('\n').trim();
+    // Description = best available field, fallback to chunk body text
+    const description = buyerFear || whyItMatters ||
+      chunk.split('\n')
+        .slice(1)
+        .map(l => l.replace(/\*\*/g, '').replace(/^[-•*\s]+/, '').trim())
+        .filter(l => l && !/^severity|^why|^how|^what|^prep/i.test(l))
+        .join(' ')
+        .slice(0, 300);
 
     items.push({
-      title: title.replace(/\*\*/g, '').replace(/^\d+[\.\)]\s*/, ''),
-      description: bodyLines.replace(/\*\*(.+?)\*\*/g, '$1'),
+      title: rawTitle,
       severity,
+      description,
+      buyerFear,
+      whyItMatters,
+      conclusion,
+      priority,
       rawText: chunk.trim(),
     });
   }
 
+  // Extract "Key Information Gaps" or similar from section
+  const gapsMatch = sectionText.match(
+    /(?:key information gaps?|missing information|information gaps?)[:\s*\n]+([\s\S]+?)(?=\n#{1,3}|\n\*\*[A-D][\.\)]|\n[A-D][\.\)]|$)/i
+  );
+  let infoGaps = [];
+  if (gapsMatch) {
+    infoGaps = gapsMatch[1]
+      .split(/\n|,/)
+      .map(l => l.replace(/^[-•*\d\.\)]+\s*/, '').replace(/\*\*/g, '').trim())
+      .filter(l => l.length > 3 && l.length < 80);
+  }
+
+  return { items, infoGaps };
+}
+
+// ─── B. Persona Lens ──────────────────────────────────────────────────────────
+
+const KNOWN_PERSONAS = [
+  { key: 'panel_lead',        first: 'Alexandra', full: 'Alexandra Chen',        initials: 'AC', role: 'Managing Partner',                color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
+  { key: 'pe_partner',        first: 'Marcus',    full: 'Marcus Webb',           initials: 'MW', role: 'Senior Partner — Blackridge PE',  color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+  { key: 'technical_cfo',     first: 'Diane',     full: 'Diane Foster',          initials: 'DF', role: 'Operating CFO — Meridian Capital', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
+  { key: 'corp_dev',          first: 'James',     full: 'James Okafor',          initials: 'JO', role: 'Head of Corp Dev',                color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+  { key: 'operating_partner', first: 'Sarah',     full: 'Sarah Lindqvist',       initials: 'SL', role: 'Operating Partner',               color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+  { key: 'ops_ai_expert',     first: 'Ravi',      full: 'Dr. Ravi Subramaniam',  initials: 'RS', role: 'Operating Principal — AI Practice', color: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+];
+
+function splitPersonaBlocks(text) {
+  if (!text) return [];
+  const splits = [];
+  const lines = text.split('\n');
+  let charPos = 0;
+
+  for (const line of lines) {
+    for (const persona of KNOWN_PERSONAS) {
+      // Match persona's first name at the start of a line (possibly after ** or ##)
+      const re = new RegExp(`^(?:\\*{1,2}|#{1,3}\\s*)?(?:Dr\\.?\\s*)?${persona.first}\\s+\\w`, 'i');
+      if (re.test(line.trim())) {
+        if (!splits.find(s => s.persona.key === persona.key)) {
+          splits.push({ persona, pos: charPos });
+        }
+        break;
+      }
+    }
+    charPos += line.length + 1;
+  }
+
+  splits.sort((a, b) => a.pos - b.pos);
+
+  return splits.map(({ persona, pos }, i) => ({
+    persona,
+    text: text.slice(pos, splits[i + 1]?.pos ?? text.length).trim(),
+  }));
+}
+
+function extractPersonaQuestions(blockText) {
+  // Find the questions sub-section
+  const questionsSection = blockText.match(
+    /(?:most dangerous|hardest|2 (?:most )?dangerous|their (?:2|two)|2 hardest)[^\n]*\n([\s\S]{0,800})/i
+  )?.[1] || blockText;
+
+  const questions = [];
+
+  // Match quoted strings — allow both ? and . endings (some are imperative form)
+  // Use multiple quote styles: ASCII " and typographic " "
+  const quoteRe = /[""]([^"""]{10,250}?)[""]|"([^"]{10,250}?)"/g;
+  let m;
+  const searchIn = questionsSection;
+  while ((m = quoteRe.exec(searchIn)) !== null) {
+    const q = (m[1] || m[2]).trim();
+    if (q.length > 10) questions.push(q);
+    if (questions.length >= 2) break;
+  }
+
+  // Fallback: grab numbered lines that look like questions
+  if (questions.length === 0) {
+    for (const line of questionsSection.split('\n')) {
+      const s = line.replace(/^\d+[\.\)]\s+/, '').replace(/^[-•*]\s+/, '').replace(/\*\*/g, '').trim()
+        .replace(/^[""]/, '').replace(/[""]$/, '');
+      if ((s.endsWith('?') || s.endsWith('.')) && s.length > 15) {
+        questions.push(s);
+        if (questions.length >= 2) break;
+      }
+    }
+  }
+
+  return questions.slice(0, 2);
+}
+
+function extractRedFlags(blockText) {
+  // Handle inline comma-separated: "Red flags watching for: item1, item2"
+  const inlineMatch = blockText.match(/(?:red flags?|watching for)[^\n]*?:\s*([^\n]+)/i);
+  if (inlineMatch) {
+    const items = inlineMatch[1]
+      .split(',')
+      .map(s => s.replace(/\*\*/g, '').trim())
+      .filter(l => l.length > 2);
+    if (items.length > 0) return items.slice(0, 4);
+  }
+
+  // Handle multi-line bullet list
+  const section = blockText.match(
+    /(?:red flags?|watching for|loses? (?:their )?confidence)[^\n]*\n([\s\S]{0,400})/i
+  )?.[1] || '';
+
+  return section
+    .split('\n')
+    .map(l => l.replace(/^[-•*\d\.\)]+\s*/, '').replace(/\*\*/g, '').trim())
+    .filter(l => l.length > 5 && l.length < 120)
+    .slice(0, 4);
+}
+
+export function parsePersonaLens(sectionText) {
+  if (!sectionText) return [];
+  const blocks = splitPersonaBlocks(sectionText);
+  if (!blocks.length) return [];
+
+  return blocks.map(({ persona, text: blockText }) => {
+    const obsessions = extractBulletListAfterLabel(
+      blockText, 'tests? hardest|core obsessions?|what (?:he|she|they) test'
+    );
+    const confidence = extractBulletListAfterLabel(
+      blockText, 'loses? (?:their |his |her )?confidence|what loses'
+    );
+    const questions = extractPersonaQuestions(blockText);
+    const redFlags = extractRedFlags(blockText);
+
+    const hiddenAgendaMatch = blockText.match(
+      /(?:hidden agenda|agenda)[:\s*\n]+([^\n]{20,300})/i
+    );
+    const hiddenAgenda = hiddenAgendaMatch
+      ? hiddenAgendaMatch[1].replace(/\*\*/g, '').replace(/^[""]|[""]$/g, '').trim()
+      : '';
+
+    return { ...persona, obsessions, confidence, questions, redFlags, hiddenAgenda, rawText: blockText };
+  });
+}
+
+// ─── C. Positioning ───────────────────────────────────────────────────────────
+
+/**
+ * Extract a numbered/bulleted list, returning [{title, description}].
+ * Strips the leading number from titles.
+ */
+function extractListItems(text, afterLabelPattern, maxItems = 6) {
+  const labelRe = new RegExp(
+    `\\*{0,2}${afterLabelPattern}\\*{0,2}[:\\s]*(?:\\([^)]+\\))?[:\\s]*\\n?`,
+    'i'
+  );
+  const labelMatch = labelRe.exec(text);
+  if (!labelMatch) return [];
+
+  const afterText = text.slice(labelMatch.index + labelMatch[0].length);
+  const items = [];
+
+  for (const line of afterText.split('\n')) {
+    const s = line.trim();
+    if (!s) { if (items.length > 0) break; continue; }
+    if (/^#{1,3}\s/.test(s) && items.length > 0) break;
+    if (/^\*\*[A-D][\.\)]/.test(s) && items.length > 0) break;
+    // Stop at the next major bolded section header (not a list item)
+    if (/^\*\*[A-Z][a-z]/.test(s) && !/^\*\*\d/.test(s) && items.length > 0) break;
+
+    if (/^[-•*]\s/.test(s) || /^\d+[\.\)]\s/.test(s)) {
+      // Strip leading number/bullet
+      let content = s.replace(/^(?:\d+[\.\)]\s+|[-•*]\s+)/, '').replace(/\*\*/g, '').trim();
+      // Split on " — " for title/description
+      const dashIdx = content.indexOf(' — ');
+      if (dashIdx > 0) {
+        items.push({ title: content.slice(0, dashIdx).trim(), description: content.slice(dashIdx + 3).trim() });
+      } else {
+        items.push({ title: content, description: '' });
+      }
+      if (items.length >= maxItems) break;
+    } else if (s && items.length > 0 && !/^\*\*/.test(s) && !/^#{1,3}/.test(s)) {
+      // Continuation: becomes description of the last item
+      if (!items[items.length - 1].description) {
+        items[items.length - 1].description = s.replace(/\*\*/g, '').trim();
+      }
+    }
+  }
   return items;
 }
 
-/**
- * Parse buyer persona cards from the Buyer Panel section.
- * Looks for persona headers like:
- *   **Alexandra Chen — Panel Lead**
- *   ### Marcus Webb
- * Returns array of { name, role, style, agenda, rawText }
- */
-function parsePersonaCards(block) {
-  if (!block) return [];
+function extractNarrative(text) {
+  // Blockquote: "> text"
+  const bq = text.match(/^>\s*"?(.+?)"?\s*$/m);
+  if (bq) return bq[1].trim();
 
-  const cards = [];
-
-  // Known persona names to anchor splits
-  const PERSONA_NAMES = [
-    'Alexandra', 'Marcus', 'Diane', 'James', 'Sarah', 'Ravi',
-    'Panel Lead', 'PE Partner', 'CFO', 'Corp Dev', 'Operating Partner', 'Ops',
-  ];
-
-  // Split on lines containing bold persona-like headers
-  const namePattern = new RegExp(
-    `\\n(?=\\*\\*(?:${PERSONA_NAMES.join('|')})[^\\n]*\\*\\*|###\\s*(?:${PERSONA_NAMES.join('|')}))`,
-    'i'
+  // After "most credible narrative" label, grab the quoted text
+  const afterLabel = text.match(
+    /(?:most credible narrative|single most credible|your narrative)[^\n]*\n\s*[""]?([^"\n]{30,500})[""]?/i
   );
+  if (afterLabel) return afterLabel[1].replace(/\*\*/g, '').trim();
 
-  const chunks = block.split(namePattern);
+  // A standalone quoted string anywhere in the section
+  const quote = text.match(/"([^"]{40,500})"/);
+  if (quote) return quote[1].trim();
 
-  for (const chunk of chunks) {
-    if (!chunk.trim()) continue;
-
-    // Extract name/role from header
-    const headerMatch =
-      chunk.match(/^\*\*(.+?)\*\*/) ||
-      chunk.match(/^###\s*(.+?)(?:\n|$)/m);
-
-    if (!headerMatch) continue;
-
-    const header = headerMatch[1].trim();
-    const [namePart, rolePart] = header.split(/[—–-]/).map(s => s.trim());
-
-    // Extract key fields from body
-    const styleMatch = chunk.match(/(?:style|approach|tone)[:\s]+([^\n]+)/i);
-    const agendaMatch = chunk.match(/(?:agenda|focus|obsess|priority|concern)[:\s]+([^\n]+)/i);
-    const expectMatch = chunk.match(/(?:expect|will ask|question)[:\s]+([^\n]+)/i);
-
-    cards.push({
-      name: namePart || header,
-      role: rolePart || '',
-      style: styleMatch ? styleMatch[1].replace(/\*\*/g, '').trim() : '',
-      agenda: agendaMatch ? agendaMatch[1].replace(/\*\*/g, '').trim() : '',
-      expect: expectMatch ? expectMatch[1].replace(/\*\*/g, '').trim() : '',
-      rawText: chunk.trim(),
-    });
-  }
-
-  return cards;
+  return '';
 }
 
-/**
- * Parse the Positioning section into theme panels.
- * Returns { strengths[], vulnerabilities[], recommendations[], rawText }
- */
-function parsePositioning(block) {
-  if (!block) return { strengths: [], vulnerabilities: [], recommendations: [], rawText: '' };
+export function parsePositioning(sectionText) {
+  if (!sectionText) return { leadWith: [], fixBefore: [], narrative: '', proofPoints: [], mistakes: [], rawText: '' };
 
-  const extract = (pattern) => {
-    const match = block.match(pattern);
-    if (!match) return [];
-    const sectionText = match[1];
-    // Extract bullet points
-    return sectionText
-      .split('\n')
-      .filter(l => /^[-•*]\s/.test(l.trim()) || /^\d+[\.\)]\s/.test(l.trim()))
-      .map(l => l.replace(/^[-•*\d\.\)]\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1').trim())
-      .filter(Boolean);
-  };
+  const leadWith   = extractListItems(sectionText, 'strongest themes?|lead with|themes? (?:to )?lead', 7);
+  const fixBefore  = extractListItems(sectionText, 'themes? needing work|fix before|work on|needs? work|areas? (?:to )?improve', 7);
+  const narrative  = extractNarrative(sectionText);
+  const proofPoints = extractListItems(sectionText, 'must.?land proof points?|proof points?|must memorize', 5);
+  const mistakes   = extractListItems(sectionText, 'credibility mistakes?|mistakes? to avoid|avoid', 5);
 
-  const strengths = extract(/(?:strength|advantage|positive)[s]?[:\s\*]*\n([\s\S]+?)(?=\n(?:vuln|weakness|risk|recommend|$))/i);
-  const vulnerabilities = extract(/(?:vuln|weakness|risk|gap)[s]?[:\s\*]*\n([\s\S]+?)(?=\n(?:strength|recommend|improve|$))/i);
-  const recommendations = extract(/(?:recommend|action|improve|position)[s]?[:\s\*]*\n([\s\S]+?)(?=\n[A-Z]|$)/i);
-
-  // Pull out any key value statements like "Narrative: ..."
-  const narrativeMatch = block.match(/(?:narrative|positioning statement)[:\s]+([^\n]+)/i);
-  const narrative = narrativeMatch ? narrativeMatch[1].replace(/\*\*/g, '').trim() : '';
-
-  return {
-    narrative,
-    strengths,
-    vulnerabilities,
-    recommendations,
-    rawText: block.trim(),
-  };
+  return { leadWith, fixBefore, narrative, proofPoints, mistakes, rawText: sectionText.trim() };
 }
 
-/**
- * Parse Attack Zones into accordion items.
- * Returns array of { zone, priority, questions[], coaching, rawText }
- */
-function parseAttackZones(block) {
-  if (!block) return [];
+// ─── D. Attack Zones ─────────────────────────────────────────────────────────
 
+export function parseAttackZones(sectionText) {
+  if (!sectionText) return [];
+
+  const chunks = splitNumberedItems(sectionText);
   const zones = [];
-  const chunks = block.split(/\n(?=\d+[\.\)]\s|\*\*\d+[\.\)]\s)/);
 
   for (const chunk of chunks) {
     if (!chunk.trim()) continue;
 
-    const titleMatch =
-      chunk.match(/^\*\*\d+[\.\)]\s*(.+?)\*\*/) ||
-      chunk.match(/^\d+[\.\)]\s*\*\*(.+?)\*\*/) ||
-      chunk.match(/^\d+[\.\)]\s+(.+?)(?:\n|$)/);
+    const rawTitle = extractItemTitle(chunk);
+    if (!rawTitle) continue;
 
-    if (!titleMatch) continue;
+    // Split title on " — " for title/subtitle
+    const dashIdx = rawTitle.indexOf(' — ');
+    const title    = dashIdx > 0 ? rawTitle.slice(0, dashIdx).trim() : rawTitle;
+    const subtitle = dashIdx > 0 ? rawTitle.slice(dashIdx + 3).trim() : '';
 
-    const zone = titleMatch[1].replace(/\*\*/g, '').trim();
+    const whyMatters  = extractField(chunk, ['why it matters', 'why this matters', 'why buyers probe', 'why']);
+    const weakTeams   = extractBulletListAfterLabel(chunk, 'what weak teams get wrong|weak teams?|wrong approach');
+    const strongAnswer = extractBulletListAfterLabel(chunk, 'what (?:a )?strong (?:answer )?requires?|strong answer|what is required|what buyers need');
 
-    // Extract priority
-    const priorityMatch = chunk.match(/(?:priority|severity)[:\s]+(\w+)/i);
-    const lower = chunk.toLowerCase();
-    let priority = 'medium';
-    if (priorityMatch) {
-      priority = priorityMatch[1].toLowerCase();
-    } else if (/\bhigh\b/.test(lower)) {
-      priority = 'high';
-    } else if (/\bcritical\b/.test(lower)) {
-      priority = 'critical';
-    } else if (/\blow\b/.test(lower)) {
-      priority = 'low';
-    }
-
-    // Extract sample questions
-    const questions = chunk
-      .split('\n')
-      .filter(l => /^[-•]\s/.test(l.trim()) && /\?/.test(l))
-      .map(l => l.replace(/^[-•]\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1').trim())
-      .filter(Boolean);
-
-    // Coaching notes
-    const coachMatch = chunk.match(/(?:coach|guid|prep|how to answer|management should)[:\s]+([^\n]+)/i);
-    const coaching = coachMatch ? coachMatch[1].replace(/\*\*/g, '').trim() : '';
-
-    zones.push({ zone, priority, questions, coaching, rawText: chunk.trim() });
+    zones.push({ title, subtitle, whyMatters, weakTeams, strongAnswer, rawText: chunk.trim() });
   }
 
   return zones;
 }
 
-/**
- * Main entry point.
- * @param {string} part2Text — raw Part 2 output from Claude
- * @returns {{ riskMap, buyerPanel, positioning, attackZones, parseError }}
- */
+// ─── Main entry ───────────────────────────────────────────────────────────────
+
 export function parseAnalysis(part2Text) {
   if (!part2Text || typeof part2Text !== 'string') {
-    return { riskMap: [], buyerPanel: [], positioning: {}, attackZones: [], parseError: 'No analysis text provided' };
+    return { riskMap: { items: [], infoGaps: [] }, personaLens: [], positioning: {}, attackZones: [], sections: {}, parseError: 'No text' };
   }
 
   try {
-    const sections = splitSections(part2Text);
+    const sections = splitIntoSections(part2Text);
 
-    const riskMap = parseRiskItems(sections.riskMap || '');
-    const buyerPanel = parsePersonaCards(sections.buyerPanel || '');
+    // Use isolated section text when available, fall back to full text
+    const riskMap    = parseRiskMap(sections.riskMap    || part2Text);
+    const personaLens = parsePersonaLens(sections.personaLens || part2Text);
     const positioning = parsePositioning(sections.positioning || '');
     const attackZones = parseAttackZones(sections.attackZones || '');
 
-    return {
-      riskMap,
-      buyerPanel,
-      positioning,
-      attackZones,
-      sections, // raw section text for fallback rendering
-      parseError: null,
-    };
+    return { riskMap, personaLens, positioning, attackZones, sections, parseError: null };
   } catch (err) {
     return {
-      riskMap: [],
-      buyerPanel: [],
+      riskMap: { items: [], infoGaps: [] },
+      personaLens: [],
       positioning: {},
       attackZones: [],
       sections: {},
