@@ -97,27 +97,33 @@ function splitIntoSections(text) {
 function splitNumberedItems(text) {
   if (!text) return [];
 
-  // Detect "VULNERABILITY N:" / "RISK N:" table-based format Claude sometimes uses
-  if (/(?:VULNERABILITY|RISK)\s+\d+[:\.\)]/i.test(text)) {
-    // Split on --- horizontal rules between items, OR on the VULNERABILITY/RISK header lines
+  // Detect table-based formats Claude sometimes uses
+  // - VULNERABILITY N: Title
+  // - RISK N: Title
+  // - ATTACK ZONE N: Title
+  // Sometimes the entire header line is bold-wrapped: **VULNERABILITY 1: ...**
+  if (/(?:\*{1,2}\s*)?(?:VULNERABILITY|RISK|ATTACK\s+ZONE)\s+\d+[:\.\)]/i.test(text)) {
+    // Split on --- horizontal rules between items, OR on header lines
     return text
-      .split(/\n-{3,}\n|\n(?=(?:VULNERABILITY|RISK)\s+\d+[:\.\)]\s)/i)
+      .split(/\n-{3,}\n|\n(?=\s*\*{0,2}\s*(?:VULNERABILITY|RISK|ATTACK\s+ZONE)\s+\d+[:\.\)]\s)/i)
       .map(p => p.trim())
       .filter(Boolean);
   }
 
   // Detect "#N — Title" format (hash + number + em-dash/hyphen)
-  if (/#\d+\s*[—–-]/.test(text)) {
+  // Allow optional space after "#", optional markdown wrappers, and optional leading headings
+  if (/#\s*\d+\s*[—–-]/.test(text)) {
     return text
-      .split(/\n-{3,}\n|\n(?=#\d+\s*[—–-])/)
+      .split(/\n-{3,}\n|\n(?=\s*(?:#{1,3}\s*)?\*{0,2}#\s*\d+\s*[—–-])/)
       .map(p => p.trim())
       .filter(Boolean);
   }
 
   // Detect "Zone N — Title" format
-  if (/^Zone\s+\d+\s*[—–-]/im.test(text)) {
+  // Allow optional markdown wrappers and headings, and tolerate "ZONE" casing
+  if (/^\s*(?:#{1,3}\s*)?\*{0,2}Zone\s+\d+\s*[—–-]/im.test(text)) {
     return text
-      .split(/\n-{3,}\n|\n(?=Zone\s+\d+\s*[—–-])/i)
+      .split(/\n-{3,}\n|\n(?=\s*(?:#{1,3}\s*)?\*{0,2}Zone\s+\d+\s*[—–-])/i)
       .map(p => p.trim())
       .filter(Boolean);
   }
@@ -133,9 +139,12 @@ function splitNumberedItems(text) {
  */
 function extractItemTitle(chunk) {
   const patterns = [
-    /^\s*(?:VULNERABILITY|RISK)\s+\d+[:\.\)]\s+(.+?)(?:\n|$)/i, // VULNERABILITY 1: Title
-    /^\s*#\d+\s*[—–-]\s*(.+?)(?:\n|$)/,                         // #1 — Title
-    /^\s*Zone\s+\d+\s*[—–-]\s*(.+?)(?:\n|$)/i,                  // Zone 1 — Title
+    // VULNERABILITY/RISK/ATTACK ZONE headers, sometimes bold-wrapped
+    /^\s*\*{0,2}\s*(?:VULNERABILITY|RISK|ATTACK\s+ZONE)\s+\d+[:\.\)]\s+(.+?)(?:\n|$)/i,
+    // "# 1 — Title" (optionally wrapped in **...** or preceded by ###)
+    /^\s*(?:#{1,3}\s*)?\*{0,2}#\s*\d+\s*[—–-]\s*(.+?)(?:\n|$)/i, // #1 — Title
+    // "Zone 1 — Title" (optionally wrapped in **...** or preceded by ###)
+    /^\s*(?:#{1,3}\s*)?\*{0,2}Zone\s+\d+\s*[—–-]\s*(.+?)(?:\n|$)/i, // Zone 1 — Title
     /^\s*\*\*\d+[\.\)]\s+(.+?)\*\*/,                            // **1. Title**
     /^\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,                            // 1. **Title**
     /^\s*#{1,3}\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,                  // ### 1. **Title**
