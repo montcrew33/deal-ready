@@ -133,7 +133,6 @@ const TABS = [
   { id: 'buyerPanel',  label: 'Buyer Panel' },
   { id: 'positioning', label: 'Positioning' },
   { id: 'attackZones', label: 'Attack Zones' },
-  { id: 'fullReport',  label: 'Full Report' },
 ];
 
 function TabBar({ active, onChange }) {
@@ -687,7 +686,95 @@ function FullReportTab({ part1Output, part2Output }) {
   );
 }
 
-// ─── Phase blocks (pre-Part 2) ────────────────────────────────────────────────
+// ─── Analysis loading state (replaces streaming text blobs) ──────────────────
+
+function AnalyzingState({ part1Done, part2Done, streaming, onStart }) {
+  const steps = [
+    {
+      id: 'part1',
+      label: 'Situation Framing',
+      sub: 'Reading documents, identifying buyer context and information quality',
+      done: part1Done,
+      active: streaming === 'part1',
+    },
+    {
+      id: 'part2',
+      label: 'Risk Map & War Room',
+      sub: 'Building buyer risk map, persona panel, positioning guidance, and attack zones',
+      done: part2Done,
+      active: streaming === 'part2',
+    },
+  ];
+
+  const nothingStarted = !part1Done && !part2Done && !streaming;
+
+  return (
+    <div className="glass rounded-2xl p-8 space-y-6">
+      <div className="space-y-4">
+        {steps.map((step, i) => (
+          <div key={step.id} className="flex items-start gap-4">
+            {/* Status icon */}
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 transition-all duration-300 ${
+              step.done
+                ? 'bg-primary text-white'
+                : step.active
+                  ? 'bg-primary/20 border-2 border-primary'
+                  : 'bg-surface-light border-2 border-border'
+            }`}>
+              {step.done ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : step.active ? (
+                <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+              ) : (
+                <span className="text-xs font-bold text-muted">{i + 1}</span>
+              )}
+            </div>
+
+            {/* Label */}
+            <div className="flex-1 min-w-0 pt-0.5">
+              <p className={`text-sm font-semibold transition-colors ${
+                step.done ? 'text-primary' : step.active ? 'text-foreground' : 'text-muted'
+              }`}>
+                {step.label}
+                {step.done && <span className="ml-2 text-xs font-normal text-primary/70">Complete</span>}
+                {step.active && <span className="ml-2 text-xs font-normal text-primary animate-pulse">Generating…</span>}
+              </p>
+              <p className="text-xs text-muted mt-0.5 leading-relaxed">{step.sub}</p>
+
+              {/* Progress bar while active */}
+              {step.active && (
+                <div className="mt-2 h-0.5 w-full bg-surface-light rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full animate-[progress_3s_ease-in-out_infinite]"
+                    style={{ width: '60%', animation: 'pulse 2s ease-in-out infinite' }} />
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Connector line between steps */}
+      {nothingStarted && (
+        <div className="pt-2">
+          <button
+            onClick={onStart}
+            disabled={!!streaming}
+            className="btn-primary w-full"
+          >
+            Begin Analysis →
+          </button>
+          <p className="text-xs text-muted text-center mt-3">
+            Part 1 and Part 2 will run automatically in sequence. Takes 60–90 seconds.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Phase blocks (pre-Part 2) — kept for reference, replaced by AnalyzingState ──
 
 function PhaseBlock({ phase, label, number, output, streaming, onRun, canRun, done }) {
   const endRef = useRef(null);
@@ -926,9 +1013,6 @@ export default function AnalysisPage() {
               {activeTab === 'attackZones' && (
                 <AttackZonesTab parsed={parsed} rawSection={parsed.sections?.attackZones || part2Output} sessionId={id} />
               )}
-              {activeTab === 'fullReport' && (
-                <FullReportTab part1Output={part1Output} part2Output={part2Output} />
-              )}
             </div>
 
             <div className="mt-8 glass rounded-2xl p-5 flex items-center justify-between gap-4 border-primary/20 glow-primary-sm">
@@ -949,15 +1033,12 @@ export default function AnalysisPage() {
             </div>
           </div>
         ) : (
-          /* Phase blocks */
-          <div className="space-y-5">
-            <PhaseBlock phase="part1" number="1" label="Situation Framing & Information Quality"
-              output={part1Output} streaming={streaming === 'part1'} done={part1Done}
-              canRun={!streaming} onRun={() => runPhase('part1')} />
-            <PhaseBlock phase="part2" number="2" label="Buyer Risk Map, Persona Lens & Attack Zones"
-              output={part2Output} streaming={streaming === 'part2'} done={part2Done}
-              canRun={part1Done && !streaming} onRun={() => runPhase('part2')} />
-          </div>
+          <AnalyzingState
+            part1Done={part1Done}
+            part2Done={part2Done}
+            streaming={streaming}
+            onStart={() => runPhase('part1')}
+          />
         )}
       </main>
     </div>

@@ -27,8 +27,11 @@ const SEVERITY_PATTERNS = [
 ];
 
 function detectSeverity(text) {
-  // Check the "Severity: X" line first for accuracy
-  const severityLine = text.match(/severity[:\s*_]+(.{1,30})/i)?.[1] || '';
+  // Check "| Severity | 🔴 Critical |" table row, then "Severity: X" label, then scan top of text
+  const severityLine =
+    text.match(/\|\s*severity\s*\|\s*([^|\n]{1,40})/i)?.[1] ||
+    text.match(/severity[:\s*_]+(.{1,30})/i)?.[1] ||
+    '';
   const target = severityLine || text.slice(0, 300);
   for (const { re, level } of SEVERITY_PATTERNS) {
     if (re.test(target)) return level;
@@ -91,8 +94,17 @@ function splitIntoSections(text) {
  */
 function splitNumberedItems(text) {
   if (!text) return [];
-  // Split on newline followed by a numbered item start
-  // The item can optionally start with ** or ###
+
+  // Detect "VULNERABILITY N:" / "RISK N:" table-based format Claude sometimes uses
+  if (/(?:VULNERABILITY|RISK)\s+\d+[:\.\)]/i.test(text)) {
+    // Split on --- horizontal rules between items, OR on the VULNERABILITY/RISK header lines
+    return text
+      .split(/\n-{3,}\n|\n(?=(?:VULNERABILITY|RISK)\s+\d+[:\.\)]\s)/i)
+      .map(p => p.trim())
+      .filter(Boolean);
+  }
+
+  // Standard numbered list: **1. Title**, 1. Title, ### 1. Title
   const parts = text.split(/\n(?=\s*(?:\*{1,2}\s*)?\d+[\.\)]\s|\s*#{1,3}\s+\d+[\.\)]\s)/);
   return parts.map(p => p.trim()).filter(Boolean);
 }
@@ -103,11 +115,12 @@ function splitNumberedItems(text) {
  */
 function extractItemTitle(chunk) {
   const patterns = [
-    /^\s*\*\*\d+[\.\)]\s+(.+?)\*\*/,           // **1. Title** or **1. Title — Sub**
-    /^\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,           // 1. **Title**
-    /^\s*#{1,3}\s*\d+[\.\)]\s+\*\*(.+?)\*\*/, // ### 1. **Title**
-    /^\s*#{1,3}\s*\d+[\.\)]\s+(.+?)(?:\n|$)/, // ### 1. Title
-    /^\s*\d+[\.\)]\s+(.+?)(?:\n|$)/,           // 1. Title
+    /^\s*(?:VULNERABILITY|RISK)\s+\d+[:\.\)]\s+(.+?)(?:\n|$)/i, // VULNERABILITY 1: Title
+    /^\s*\*\*\d+[\.\)]\s+(.+?)\*\*/,                            // **1. Title**
+    /^\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,                            // 1. **Title**
+    /^\s*#{1,3}\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,                  // ### 1. **Title**
+    /^\s*#{1,3}\s*\d+[\.\)]\s+(.+?)(?:\n|$)/,                  // ### 1. Title
+    /^\s*\d+[\.\)]\s+(.+?)(?:\n|$)/,                            // 1. Title
   ];
   for (const re of patterns) {
     const m = chunk.match(re);
@@ -118,14 +131,18 @@ function extractItemTitle(chunk) {
 
 // ─── Field extractors ─────────────────────────────────────────────────────────
 
-/** Extract a single labeled field value, e.g. "**Why a buyer cares:** text" */
+/** Extract a single labeled field value.
+ *  Handles both "**Label:** value" prose format and "| Label | value |" table format. */
 function extractField(text, labelVariants) {
   for (const label of labelVariants) {
-    // Matches "**Label:** value" or "Label: value" on its own line
-    const re = new RegExp(
-      `\\*{0,2}${label}\\*{0,2}[:\\s]+([^\\n]{5,400})`,
-      'i'
-    );
+    // Table row: | Label | value | — try this first since it's unambiguous
+    const tableRe = new RegExp(`\\|[^|]*${label}[^|]*\\|\\s*([^|\\n]{5,400})`, 'i');
+    const tableMatch = tableRe.exec(text);
+    if (tableMatch) {
+      return tableMatch[1].replace(/\*\*/g, '').replace(/\|.*$/, '').trim();
+    }
+    // Prose format: **Label:** value  or  Label: value
+    const re = new RegExp(`\\*{0,2}${label}\\*{0,2}[:\\s]+([^\\n]{5,400})`, 'i');
     const m = re.exec(text);
     if (m) return m[1].replace(/\*\*/g, '').replace(/^[-•*]\s*/, '').trim();
   }
@@ -195,12 +212,14 @@ export function parseRiskMap(sectionText) {
     ]);
     const priority = extractField(chunk, ['preparation priority', 'priority']);
 
-    // Description = best available field, fallback to chunk body text
-    const description = buyerFear || whyItMatters ||
+    // Description = best available field, fallback to "Issue" table cell, then chunk body text
+    const issueField = extractField(chunk, ['issue', 'the issue']);
+    const description = buyerFear || whyItMatters || issueField ||
       chunk.split('\n')
         .slice(1)
         .map(l => l.replace(/\*\*/g, '').replace(/^[-•*\s]+/, '').trim())
-        .filter(l => l && !/^severity|^why|^how|^what|^prep/i.test(l))
+        .filter(l => l && !/^severity|^why|^how|^what|^prep|^\|[-|]+\|/i.test(l))
+        .filter(l => !l.startsWith('|---'))
         .join(' ')
         .slice(0, 300);
 
