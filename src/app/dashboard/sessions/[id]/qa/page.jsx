@@ -41,20 +41,33 @@ function extractTopic(content) {
 
 function parseFeedback(content) {
   if (!content) return null;
-  const scoreMatch = content.match(/[Ss]core[:\s]+(\d+(?:\.\d+)?)(?:\s*\/\s*10)?/);
+
+  // Detect score — "Score: 7", "Score: 7/10", or standalone "7/10"
+  const scoreMatch =
+    content.match(/[Ss]core[:\s]+(\d+(?:\.\d+)?)(?:\s*\/\s*10)?/) ||
+    content.match(/\b(\d+(?:\.\d+)?)\s*\/\s*10\b/);
   if (!scoreMatch) return null;
   const score = parseFloat(scoreMatch[1]);
+  if (score < 0 || score > 10) return null; // ignore spurious matches
 
+  // Grade: Strong / Adequate / Weak / Damaging
+  const gradeMatch = content.match(/\b(Strong|Adequate|Weak|Damaging)\b/i);
+  const grade = gradeMatch
+    ? gradeMatch[1].charAt(0).toUpperCase() + gradeMatch[1].slice(1).toLowerCase()
+    : null;
+
+  // What worked
   const workedMatch = content.match(/[Ww]hat\s+worked[:\s*_]+([^\n]+)/);
   const worked = workedMatch ? workedMatch[1].replace(/\*\*/g, '').replace(/^[:\s]+/, '').trim() : '';
 
+  // What was weak / improvement
   const weakMatch =
     content.match(/[Ww]hat\s+(?:was\s+)?weak[:\s*_]+([^\n]+)/) ||
     content.match(/[Ii]mprov(?:e|ement)[:\s*_]+([^\n]+)/);
   const weak = weakMatch ? weakMatch[1].replace(/\*\*/g, '').replace(/^[:\s]+/, '').trim() : '';
 
   const direction = /follow.?up/i.test(content) ? 'Follow-up →' : 'Moving on →';
-  return { score, worked, weak, direction };
+  return { score, grade, worked, weak, direction };
 }
 
 function parseAvgScore(messages) {
@@ -186,33 +199,54 @@ function Sidebar({ currentSpeaker, messages, started }) {
 
 // ─── Message components ───────────────────────────────────────────────────────
 
+const GRADE_STYLES = {
+  Strong:   { label: 'STRONG',   cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' },
+  Adequate: { label: 'ADEQUATE', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/25' },
+  Weak:     { label: 'WEAK',     cls: 'bg-red-500/15 text-red-400 border-red-500/25' },
+  Damaging: { label: 'DAMAGING', cls: 'bg-red-950/40 text-red-300 border-red-800/40' },
+};
+
 function FeedbackCard({ feedback }) {
-  const { score, worked, weak, direction } = feedback;
+  const { score, grade, worked, weak, direction } = feedback;
   const scoreColor =
     score >= 7 ? 'bg-emerald-500 text-white' :
     score >= 5 ? 'bg-amber-500 text-white' :
                  'bg-red-500 text-white';
+  const gradeCfg = grade ? GRADE_STYLES[grade] : null;
 
   return (
     <div className="ml-11 mt-2 rounded-xl border border-border/50 bg-surface/60 px-3 py-2.5 flex items-start gap-3">
+      {/* Score circle */}
       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${scoreColor}`}>
         {Number.isInteger(score) ? score : score.toFixed(1)}
       </div>
-      <div className="flex-1 min-w-0 space-y-0.5">
+
+      <div className="flex-1 min-w-0 space-y-1">
+        {/* Grade badge */}
+        {gradeCfg && (
+          <span className={`inline-flex text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full border ${gradeCfg.cls}`}>
+            {gradeCfg.label}
+          </span>
+        )}
+        {/* What worked */}
         {worked && (
           <p className="text-[11px] text-emerald-400 leading-snug">
             <span className="font-semibold mr-1">✓</span>{worked}
           </p>
         )}
+        {/* What was weak */}
         {weak && (
           <p className="text-[11px] text-amber-400 leading-snug">
             <span className="font-semibold mr-1">△</span>{weak}
           </p>
         )}
-        {!worked && !weak && (
+        {/* Fallback if no detail lines */}
+        {!worked && !weak && !gradeCfg && (
           <p className="text-[11px] text-muted">Score recorded</p>
         )}
       </div>
+
+      {/* Follow-up indicator */}
       <span className="text-[10px] text-muted font-medium shrink-0 pt-0.5">{direction}</span>
     </div>
   );

@@ -100,7 +100,14 @@ function RoundHistoryCard({ sessionId }) {
                 <span className="text-[11px] font-bold text-primary">{r.round}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">Round {r.round}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-foreground">Round {r.round}</p>
+                  {r.focus && (
+                    <span className="text-[10px] font-medium text-primary/80 bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full truncate max-w-[180px]">
+                      {r.focus}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted">
                   {formatDate(r.date)} · {r.questions} question{r.questions !== 1 ? 's' : ''}
                 </p>
