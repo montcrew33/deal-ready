@@ -4,7 +4,8 @@
 
 import { getAuthUser, getAccessToken, unauthorizedResponse, auditLog } from '@/lib/auth-helpers';
 import { createUserClient, createServerClient } from '@/lib/supabase-server';
-import { buildSystemPrompt } from '@/lib/promptBuilder';
+import { buildSystemPrompt, buildConversationalContext } from '@/lib/promptBuilder';
+import { buildPersonaContext } from '@/lib/personaRouter';
 import { buildDocumentContext } from '@/lib/document-processor';
 
 // Voice mapping for personas
@@ -42,11 +43,13 @@ export async function POST(request, { params }) {
     .eq('session_id', sessionId)
     .eq('processing_status', 'completed');
 
-  // Get existing Q&A conversation history
+  // Get existing Q&A conversation history — scoped to current round
+  const currentRound = session.current_round ?? 1;
   const { data: existingMessages } = await supabase
     .from('session_messages')
     .select('role, content, speaker, phase, is_voice')
     .eq('session_id', sessionId)
+    .eq('round_number', currentRound)
     .order('created_at', { ascending: true });
 
   const documentContext = buildDocumentContext(documents || []);
@@ -55,44 +58,43 @@ export async function POST(request, { params }) {
   // Build the voice session system prompt
   const basePrompt = buildSystemPrompt(sessionWithDocs);
 
-  // Build prior Q&A context for the voice session
   const priorMessages = (existingMessages || []).filter(
     m => (m.role === 'user' || m.role === 'assistant') && m.phase === 'part3'
   );
 
-  let priorQAContext = '';
-  if (priorMessages.length > 0) {
-    const lastN = priorMessages.slice(-10); // last 10 exchanges for context
-    const summary = lastN.map(m => {
-      const label = m.role === 'user' ? 'MANAGEMENT' : `PANEL (${m.speaker || 'panel'})`;
-      const snippet = m.content.length > 400 ? m.content.substring(0, 400) + '…' : m.content;
-      return `[${label}]: ${snippet}`;
-    }).join('\n\n');
+  // Use the same framework functions as the text chat route (fixes the persona bypass)
+  // Slice to last 6 exchanges to prevent OpenAI Realtime context bloat
+  const conversationalCtx = buildConversationalContext(priorMessages.slice(-6));
+  const lastUserAnswer = priorMessages.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
 
-    priorQAContext = `
-===== PRIOR Q&A HISTORY (${priorMessages.length} exchanges completed) =====
-This session has already covered the following ground. Do NOT repeat questions already asked. Pick up naturally from where the conversation left off, or move to the next priority area.
+  const body = await request.json().catch(() => ({}));
+  const persona = body.persona || 'panel_lead';
+  const personaCtx = buildPersonaContext(persona, lastUserAnswer);
 
-${summary}
-
-INSTRUCTION: The above questions have already been asked and answered. Continue the Q&A by probing a NEW area or following up on a weakness identified above. Reference prior answers where relevant.
-==========`;
-  }
+  const presenterName = session.management_team || 'the management team';
 
   const voiceInstructions = `${basePrompt}
 
 ===== ANALYSIS CONTEXT (from prior document review) =====
 ${session.part2_output || 'No prior analysis available. Conduct the Q&A based on available materials.'}
-${priorQAContext}
 
-===== INSTRUCTIONS FOR VOICE SESSION =====
-You are now conducting the live mock management presentation Q&A (Part 3).
+${conversationalCtx}
+
+${personaCtx}
+
+===== VOICE SESSION RULES =====
+You are now conducting the live mock management presentation Q&A (Part 3) as a VOICE session.
+
+CRITICAL — WHO YOU ARE SPEAKING TO:
+You are speaking DIRECTLY and EXCLUSIVELY to ${presenterName}.
+Never address, reference, or speak to other panel members (Marcus, Diane, James, Sarah, Ravi, Alexandra, etc.) in your speech.
+Do not say things like "Marcus raises a good point", "As Diane mentioned", or "I agree with my colleague".
+You are a single voice in this conversation. Direct every question and comment to the presenter.
 
 Rules for this voice session:
 - Ask ONE question at a time. Wait for the management team's verbal response.
 - After each answer, briefly score it (if scoring toggle is on) and provide concise critique.
 - Then ask the next question or a follow-up.
-- Channel the active persona's communication style and obsessions.
 - Be conversational and natural — this is a spoken dialogue, not a written exchange.
 - Keep your responses concise (30-60 seconds of speech per turn).
 - Reference specific points from the analysis above to make questions targeted.
@@ -100,8 +102,6 @@ Rules for this voice session:
 - Do NOT use markdown, bullet points, or formatting — speak naturally.
 - ${priorMessages.length > 0 ? `There are already ${priorMessages.length} exchanges on record. Briefly acknowledge this is a continuation and ask your next question — do NOT start over from the beginning.` : 'Begin by introducing yourself briefly and asking your first question.'}`;
 
-  const body = await request.json().catch(() => ({}));
-  const persona = body.persona || 'panel_lead';
   const voice = PERSONA_VOICES[persona] || 'shimmer';
 
   // Create ephemeral token via OpenAI Realtime API

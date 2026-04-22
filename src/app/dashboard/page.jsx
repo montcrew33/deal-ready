@@ -8,13 +8,13 @@ import { toast } from 'sonner';
 // ─── Status config ────────────────────────────────────────────────────────────
 
 const STATUS_META = {
-  setup:      { label: 'Setup',      color: 'text-muted bg-surface border-border' },
-  processing: { label: 'Processing', color: 'text-gold bg-gold-dim border-gold/20' },
-  part1:      { label: 'Analysis',   color: 'text-primary bg-primary-dim border-primary/20' },
-  part2:      { label: 'Analysis',   color: 'text-primary bg-primary-dim border-primary/20' },
-  part3:      { label: 'Q&A',        color: 'text-primary bg-primary-dim border-primary/20' },
-  part4:      { label: 'Debrief',    color: 'text-primary bg-primary-dim border-primary/20' },
-  complete:   { label: 'Complete',   color: 'text-success bg-success-dim border-success/20' },
+  setup:      { label: 'Setup',                color: 'text-muted bg-surface border-border' },
+  processing: { label: 'Processing...',        color: 'text-gold bg-gold-dim border-gold/20' },
+  part1:      { label: 'Analyzing...',         color: 'text-primary bg-primary-dim border-primary/20' },
+  part2:      { label: 'Analyzing...',         color: 'text-primary bg-primary-dim border-primary/20' },
+  part3:      { label: 'Q&A In Progress',      color: 'text-gold bg-gold-dim border-gold/20' },
+  part4:      { label: 'Generating Debrief…',  color: 'text-primary bg-primary-dim border-primary/20' },
+  complete:   { label: 'Complete',             color: 'text-success bg-success-dim border-success/20' },
 };
 
 const PHASE_STEPS = ['setup', 'part1', 'part2', 'part3', 'part4', 'complete'];
@@ -22,6 +22,13 @@ const PHASE_STEPS = ['setup', 'part1', 'part2', 'part3', 'part4', 'complete'];
 function getProgress(status) {
   const idx = PHASE_STEPS.indexOf(status);
   return idx < 0 ? 0 : Math.round((idx / (PHASE_STEPS.length - 1)) * 100);
+}
+
+function sessionHref(id, status) {
+  if (status === 'part1' || status === 'part2') return `/dashboard/sessions/${id}/analysis`;
+  if (status === 'part3') return `/dashboard/sessions/${id}/qa`;
+  if (status === 'part4' || status === 'complete') return `/dashboard/sessions/${id}/analysis`;
+  return `/dashboard/sessions/${id}/documents`; // setup, processing
 }
 
 // Placeholder readiness score — derived from best session progress, not real scoring logic
@@ -151,14 +158,14 @@ function SessionCard({ session: s }) {
   const progress = getProgress(s.status);
 
   return (
-    <Link href={`/dashboard/sessions/${s.id}`}>
+    <Link href={sessionHref(s.id, s.status)}>
       <div className="glass glass-hover rounded-2xl p-5 h-full flex flex-col gap-4 cursor-pointer">
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-semibold text-foreground leading-snug text-sm line-clamp-2">
             {s.company_name}
           </h3>
           <span className={`badge shrink-0 border ${meta.color}`}>
-            + {meta.label}
+            {meta.label}
           </span>
         </div>
 

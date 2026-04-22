@@ -521,7 +521,7 @@ function PositioningTab({ parsed, rawSection }) {
 
 // ─── Attack Zones tab ─────────────────────────────────────────────────────────
 
-function AttackZoneCard({ zone, index }) {
+function AttackZoneCard({ zone, index, sessionId }) {
   const [open, setOpen] = useState(index === 0);
 
   return (
@@ -624,10 +624,10 @@ function AttackZoneCard({ zone, index }) {
           {/* Practice CTA */}
           <div className="flex justify-end pt-1">
             <Link
-              href={`../qa`}
+              href={`/dashboard/sessions/${sessionId}/qa?focus=${encodeURIComponent(zone.title)}`}
               className="flex items-center gap-1.5 text-xs font-semibold text-primary border border-primary/30 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors"
             >
-              Practice This in Q&amp;A
+              Practice This →
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
@@ -639,7 +639,7 @@ function AttackZoneCard({ zone, index }) {
   );
 }
 
-function AttackZonesTab({ parsed, rawSection }) {
+function AttackZonesTab({ parsed, rawSection, sessionId }) {
   const { attackZones } = parsed;
 
   if (!attackZones?.length) {
@@ -655,7 +655,7 @@ function AttackZonesTab({ parsed, rawSection }) {
         </div>
       </div>
       {attackZones.map((zone, i) => (
-        <AttackZoneCard key={i} zone={zone} index={i} />
+        <AttackZoneCard key={i} zone={zone} index={i} sessionId={sessionId} />
       ))}
     </div>
   );
@@ -756,8 +756,15 @@ export default function AnalysisPage() {
   const [part2Done, setPart2Done] = useState(false);
   const [streaming, setStreaming] = useState(null);
   const [activeTab, setActiveTab] = useState('riskMap');
+  const [fromQA, setFromQA] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setFromQA(params.get('from') === 'qa');
+  }, []);
 
   const abortRef = useRef(null);
+  const shouldAutoChain = useRef(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/sessions/${id}`);
@@ -771,6 +778,26 @@ export default function AnalysisPage() {
   }, [id, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Autostart: when navigated from documents page with ?autostart=1, kick off Part 1 immediately
+  useEffect(() => {
+    if (loading) return; // wait for DB data to load first
+    const autostart = new URLSearchParams(window.location.search).get('autostart') === '1';
+    if (autostart && !part1Done && !part2Done && !streaming) {
+      runPhase('part1');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Auto-chain: when Part 1 finishes, automatically start Part 2
+  useEffect(() => {
+    if (streaming === null && shouldAutoChain.current && !part2Done) {
+      shouldAutoChain.current = false;
+      toast.success('Part 1 complete — starting Part 2 analysis…');
+      runPhase('part2');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming]);
 
   const parsed = useMemo(() => {
     if (!part2Output) return null;
@@ -815,7 +842,10 @@ export default function AnalysisPage() {
           if (!line.startsWith('data: ')) continue;
           const payload = line.slice(6);
           if (payload === '[DONE]') {
-            if (phase === 'part1') setPart1Done(true);
+            if (phase === 'part1') {
+              setPart1Done(true);
+              shouldAutoChain.current = true; // signal auto-chain after state settles
+            }
             if (phase === 'part2') { setPart2Done(true); setActiveTab('riskMap'); }
             setStreaming(null);
             break;
@@ -855,7 +885,16 @@ export default function AnalysisPage() {
             {session?.company_name}
           </Link>
           <span className="font-semibold text-foreground tracking-tight text-sm">DealReady</span>
-          <div className="w-28" />
+          {fromQA ? (
+            <Link
+              href={`/dashboard/sessions/${id}/qa`}
+              className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 border border-primary/30 hover:border-primary/50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Return to Q&amp;A →
+            </Link>
+          ) : (
+            <div className="w-28" />
+          )}
         </div>
       </header>
 
@@ -876,16 +915,16 @@ export default function AnalysisPage() {
 
             <div className="animate-fade-in">
               {activeTab === 'riskMap' && (
-                <RiskMapTab parsed={parsed} rawSection={parsed.sections?.riskMap} positioning={parsed.positioning} />
+                <RiskMapTab parsed={parsed} rawSection={parsed.sections?.riskMap || part2Output} positioning={parsed.positioning} />
               )}
               {activeTab === 'buyerPanel' && (
-                <BuyerPanelTab parsed={parsed} rawSection={parsed.sections?.personaLens} />
+                <BuyerPanelTab parsed={parsed} rawSection={parsed.sections?.personaLens || part2Output} />
               )}
               {activeTab === 'positioning' && (
-                <PositioningTab parsed={parsed} rawSection={parsed.sections?.positioning} />
+                <PositioningTab parsed={parsed} rawSection={parsed.sections?.positioning || part2Output} />
               )}
               {activeTab === 'attackZones' && (
-                <AttackZonesTab parsed={parsed} rawSection={parsed.sections?.attackZones} />
+                <AttackZonesTab parsed={parsed} rawSection={parsed.sections?.attackZones || part2Output} sessionId={id} />
               )}
               {activeTab === 'fullReport' && (
                 <FullReportTab part1Output={part1Output} part2Output={part2Output} />

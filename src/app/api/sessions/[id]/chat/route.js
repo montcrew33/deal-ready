@@ -36,6 +36,10 @@ export async function POST(request, { params }) {
   const ALLOWED_ACTIONS = ['start_qa', 'answer', 'debrief'];
   const action = ALLOWED_ACTIONS.includes(body.action) ? body.action : 'answer';
   const message = typeof body.message === 'string' ? body.message.slice(0, 8000) : '';
+  // focus_topic: optional, only valid on start_qa, max 300 chars
+  const focusTopic = action === 'start_qa' && typeof body.focus_topic === 'string'
+    ? body.focus_topic.trim().slice(0, 300)
+    : '';
 
   if (action === 'answer' && !message.trim()) {
     return Response.json({ error: 'Message is required' }, { status: 400 });
@@ -67,8 +71,14 @@ export async function POST(request, { params }) {
   let userContent;
   let phase = session.status;
 
+  const roundNumber = session.current_round ?? 1;
+
   if (action === 'start_qa') {
     userContent = buildPart3StartPrompt();
+    // Append focus instruction AFTER the base prompt — promptBuilder.js is not modified
+    if (focusTopic) {
+      userContent += `\n\nFOCUSED PRACTICE INSTRUCTION: This is a targeted practice round. Focus EXCLUSIVELY on the following topic: "${focusTopic}". Ask 3-5 deep, probing questions specifically about this area only. Do not move to other topics until this area has been thoroughly tested. Make your questions progressively harder.`;
+    }
     phase = 'part3';
     await serverSupabase.from('sessions').update({ status: 'part3' }).eq('id', sessionId);
     // Save the start prompt so re-entry sees it in conversation history
@@ -77,6 +87,7 @@ export async function POST(request, { params }) {
       role: 'user',
       content: userContent,
       phase: 'part3',
+      round_number: roundNumber,
     });
   } else if (action === 'debrief') {
     userContent = buildPart4Prompt();
@@ -88,6 +99,7 @@ export async function POST(request, { params }) {
       role: 'user',
       content: userContent,
       phase: 'part4',
+      round_number: roundNumber,
     });
   } else {
     userContent = message;
@@ -97,6 +109,7 @@ export async function POST(request, { params }) {
       role: 'user',
       content: message,
       phase: session.status,
+      round_number: roundNumber,
     });
   }
 
@@ -128,7 +141,7 @@ export async function POST(request, { params }) {
   const stream = await streamClaude({
     system: fullSystem,
     messages: claudeMessages,
-    maxTokens: phase === 'part4' ? 6000 : 2000,
+    maxTokens: phase === 'part4' ? 8000 : 2000,
   });
 
   const encoder = new TextEncoder();
@@ -157,6 +170,7 @@ export async function POST(request, { params }) {
           content: fullResponse,
           phase,
           speaker: nextSpeaker,
+          round_number: roundNumber,
         });
 
         // If Part 4, save the debrief output

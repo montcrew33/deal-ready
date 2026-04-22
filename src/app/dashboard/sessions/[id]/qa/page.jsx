@@ -289,6 +289,172 @@ function Message({ role, content, speaker, isStreaming }) {
   );
 }
 
+// ─── Previous Rounds modal ────────────────────────────────────────────────────
+
+function PreviousRoundsModal({ rounds, sessionId, currentRound, onClose }) {
+  const [expanded, setExpanded] = useState(null);
+  const [roundMessages, setRoundMessages] = useState({});
+  const [loading, setLoading] = useState(null);
+
+  async function loadMessages(round) {
+    if (roundMessages[round]) { setExpanded(round); return; }
+    setLoading(round);
+    const res = await fetch(`/api/sessions/${sessionId}/messages?round=${round}`);
+    if (res.ok) {
+      const { messages } = await res.json();
+      setRoundMessages(prev => ({
+        ...prev,
+        [round]: messages.filter(m => m.role === 'user' || m.role === 'assistant'),
+      }));
+    }
+    setExpanded(round);
+    setLoading(null);
+  }
+
+  const prevRounds = rounds.filter(r => r.round < currentRound);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div
+        className="rounded-2xl border border-border/60 shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[80vh]"
+        style={{ background: '#0f172a' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Previous Rounds</h2>
+            <p className="text-xs text-muted mt-0.5">{prevRounds.length} round{prevRounds.length !== 1 ? 's' : ''} completed</p>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-foreground transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Round list */}
+        <div className="overflow-y-auto flex-1 divide-y divide-border/40">
+          {prevRounds.length === 0 && (
+            <div className="px-6 py-10 text-center text-sm text-muted">No previous rounds yet.</div>
+          )}
+          {prevRounds.map(r => {
+            const isOpen = expanded === r.round;
+            const msgs = roundMessages[r.round] || [];
+            const isLoading = loading === r.round;
+            const scoreColor = r.avgScore === null ? 'text-muted'
+              : parseFloat(r.avgScore) >= 7 ? 'text-emerald-400'
+              : parseFloat(r.avgScore) >= 5 ? 'text-amber-400'
+              : 'text-red-400';
+
+            return (
+              <div key={r.round}>
+                {/* Round header row */}
+                <button
+                  onClick={() => isOpen ? setExpanded(null) : loadMessages(r.round)}
+                  className="w-full flex items-center justify-between px-6 py-4 hover:bg-surface/40 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-primary">{r.round}</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">Round {r.round}</p>
+                      <p className="text-[10px] text-muted mt-0.5">
+                        {new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {' · '}{r.questions} question{r.questions !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {r.avgScore !== null && (
+                      <span className={`text-xs font-semibold ${scoreColor}`}>{r.avgScore}/10</span>
+                    )}
+                    <svg
+                      className={`w-3.5 h-3.5 text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Transcript accordion */}
+                {isOpen && (
+                  <div className="px-6 pb-4 space-y-3 border-t border-border/40 pt-3">
+                    {isLoading && (
+                      <div className="flex items-center gap-2 text-xs text-muted py-4">
+                        <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        Loading transcript…
+                      </div>
+                    )}
+                    {!isLoading && msgs.map((m, i) => {
+                      const isPanel = m.role === 'assistant';
+                      return (
+                        <div key={m.id || i} className={`text-[11px] leading-relaxed rounded-lg px-3 py-2 ${
+                          isPanel
+                            ? 'bg-primary/5 border-l-2 border-primary/40 text-foreground/80'
+                            : 'bg-surface/60 text-muted text-right'
+                        }`}>
+                          {m.content?.slice(0, 300)}{m.content?.length > 300 ? '…' : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pause modal ─────────────────────────────────────────────────────────────
+
+function PauseModal({ onResume, onReviewAnalysis, onEnd, streaming }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div
+        className="rounded-2xl p-8 max-w-sm w-full mx-4 border border-border/60 shadow-2xl"
+        style={{ background: '#0f172a' }}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <h2 className="text-base font-bold text-foreground">Session Paused</h2>
+        </div>
+        <p className="text-xs text-muted mb-7 leading-relaxed pl-5">
+          Your Q&A session is preserved. Resume when ready, or step back to review your analysis first.
+        </p>
+
+        {/* Actions */}
+        <div className="space-y-2.5">
+          <button
+            onClick={onResume}
+            className="btn-primary w-full py-2.5 text-sm rounded-xl"
+          >
+            Resume Q&A
+          </button>
+          <button
+            onClick={onReviewAnalysis}
+            className="w-full py-2.5 text-sm text-foreground-dim hover:text-foreground border border-border/60 hover:border-border rounded-xl transition-colors bg-surface/40 hover:bg-surface-light"
+          >
+            Review Analysis →
+          </button>
+          <button
+            onClick={onEnd}
+            disabled={streaming}
+            className="w-full py-2.5 text-sm text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-xl transition-colors disabled:opacity-40"
+          >
+            End Session &amp; Debrief
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Resume banner ────────────────────────────────────────────────────────────
 
 function ResumeBanner({ qaCount, lastSpeaker, onDebrief, streaming }) {
@@ -579,6 +745,10 @@ export default function QAPage() {
 
   const [started, setStarted] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [showPreviousRounds, setShowPreviousRounds] = useState(false);
+  const [previousRounds, setPreviousRounds] = useState([]);
+  const [focusTopic, setFocusTopic] = useState('');
   const [messages, setMessages] = useState([]);
   const [answer, setAnswer] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -617,6 +787,10 @@ export default function QAPage() {
       }
     }
 
+    // Read ?focus= from URL (set by "Practice This →" on attack zone cards)
+    const focus = new URLSearchParams(window.location.search).get('focus') || '';
+    if (focus) setFocusTopic(decodeURIComponent(focus));
+
     setLoading(false);
   }, [id, router]);
 
@@ -637,6 +811,7 @@ export default function QAPage() {
     try {
       const body = { action, activeSpeaker: currentSpeaker };
       if (userMessage) body.message = userMessage;
+      if (action === 'start_qa' && focusTopic) body.focus_topic = focusTopic;
 
       const res = await fetch(`/api/sessions/${id}/chat`, {
         method: 'POST',
@@ -709,7 +884,44 @@ export default function QAPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
   }
 
+  async function handleNewRound() {
+    const res = await fetch(`/api/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'new_round' }),
+    });
+    if (!res.ok) { toast.error('Failed to start new round'); return; }
+    setMessages([]);
+    setStarted(false);
+    setEnded(false);
+    setIsResuming(false);
+    setCurrentSpeaker('panel_lead');
+    toast.success('New round — begin when ready');
+  }
+
+  async function handleOpenPreviousRounds() {
+    const res = await fetch(`/api/sessions/${id}/rounds`);
+    if (res.ok) {
+      const { rounds } = await res.json();
+      setPreviousRounds(rounds);
+    }
+    setShowPreviousRounds(true);
+  }
+
+  function handlePause() {
+    setPaused(true);
+  }
+
+  function handleResume() {
+    setPaused(false);
+  }
+
+  function handleReviewAnalysis() {
+    router.push(`/dashboard/sessions/${id}/analysis?from=qa`);
+  }
+
   async function handleDebrief() {
+    setPaused(false);
     if (!confirm('End the Q&A and generate the full debrief?')) return;
     setEnded(true);
     setIsResuming(false);
@@ -729,6 +941,26 @@ export default function QAPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
+
+      {/* ── Previous Rounds modal ── */}
+      {showPreviousRounds && (
+        <PreviousRoundsModal
+          rounds={previousRounds}
+          sessionId={id}
+          currentRound={session?.current_round ?? 1}
+          onClose={() => setShowPreviousRounds(false)}
+        />
+      )}
+
+      {/* ── Pause modal ── */}
+      {paused && (
+        <PauseModal
+          onResume={handleResume}
+          onReviewAnalysis={handleReviewAnalysis}
+          onEnd={handleDebrief}
+          streaming={streaming}
+        />
+      )}
 
       {/* ── Top bar ── */}
       <header className="border-b border-border/60 bg-surface/40 backdrop-blur-md shrink-0 z-10">
@@ -752,17 +984,44 @@ export default function QAPage() {
             <span className="text-xs font-semibold text-foreground hidden sm:block">Part 3: Live Q&amp;A</span>
           </div>
 
-          {/* Right: timer + end button */}
-          <div className="flex items-center gap-3 flex-1 justify-end">
+          {/* Right: timer + controls */}
+          <div className="flex items-center gap-2 flex-1 justify-end">
             <ElapsedTimer active={started && !ended} />
-            {started && !ended && mode === 'text' && (
+
+            {/* Previous Rounds — always visible once a session exists */}
+            {(session?.current_round ?? 1) > 1 && (
               <button
-                onClick={handleDebrief}
-                disabled={streaming}
-                className="text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                onClick={handleOpenPreviousRounds}
+                className="text-xs border border-border/60 text-muted hover:text-foreground hover:border-border px-3 py-1.5 rounded-lg transition-colors"
               >
-                End Q&A
+                Rounds ↑
               </button>
+            )}
+
+            {started && !ended && mode === 'text' && (
+              <>
+                <button
+                  onClick={handleNewRound}
+                  disabled={streaming}
+                  className="text-xs border border-border/60 text-muted hover:text-foreground hover:border-border px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  New Round
+                </button>
+                <button
+                  onClick={handlePause}
+                  disabled={streaming}
+                  className="text-xs border border-border/60 text-muted hover:text-foreground hover:border-border px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  Pause
+                </button>
+                <button
+                  onClick={handleDebrief}
+                  disabled={streaming}
+                  className="text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  End Q&A
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -799,33 +1058,53 @@ export default function QAPage() {
                   {!started && (
                     <div className="flex flex-col items-center justify-center min-h-[55vh] text-center gap-7 animate-fade-in">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Part 3</p>
-                        <h1 className="text-2xl font-bold text-foreground mb-3">Live Mock Q&A</h1>
-                        <p className="text-sm text-muted max-w-sm mx-auto leading-relaxed">
-                          The buyer panel will question your team on{' '}
-                          <span className="text-foreground font-medium">{session?.company_name}</span>.
-                          One question at a time.
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
+                          {focusTopic ? 'Focused Practice' : 'Part 3'}
                         </p>
+                        <h1 className="text-2xl font-bold text-foreground mb-3">
+                          {focusTopic ? 'Targeted Q&A' : 'Live Mock Q&A'}
+                        </h1>
+                        {focusTopic ? (
+                          <div className="max-w-sm mx-auto space-y-2">
+                            <p className="text-sm text-muted leading-relaxed">
+                              The panel will focus exclusively on:
+                            </p>
+                            <div className="inline-block border border-primary/40 bg-primary/10 rounded-xl px-4 py-2">
+                              <p className="text-sm font-semibold text-primary">{focusTopic}</p>
+                            </div>
+                            <p className="text-xs text-muted">3–5 deep questions on this topic only.</p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted max-w-sm mx-auto leading-relaxed">
+                            The buyer panel will question your team on{' '}
+                            <span className="text-foreground font-medium">{session?.company_name}</span>.
+                            One question at a time.
+                          </p>
+                        )}
                       </div>
 
-                      <div className="glass rounded-2xl p-4 flex flex-wrap justify-center gap-2 max-w-md">
-                        {PANEL_ORDER.slice(0, 5).map(key => {
-                          const p = PERSONAS[key];
-                          return (
-                            <span key={key} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${p.color}`}>
-                              {p.initials} · {p.name.split(' ')[0]}
-                            </span>
-                          );
-                        })}
-                      </div>
+                      {!focusTopic && (
+                        <div className="glass rounded-2xl p-4 flex flex-wrap justify-center gap-2 max-w-md">
+                          {PANEL_ORDER.slice(0, 5).map(key => {
+                            const p = PERSONAS[key];
+                            return (
+                              <span key={key} className={`text-xs px-2.5 py-1 rounded-full border font-medium ${p.color}`}>
+                                {p.initials} · {p.name.split(' ')[0]}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       <div className="flex gap-3">
                         <button onClick={handleStart} className="btn-primary px-7 py-2.5 text-sm rounded-xl">
-                          Begin Q&A (Text)
+                          {focusTopic ? 'Begin Focused Q&A' : 'Begin Q&A (Text)'}
                         </button>
-                        <button onClick={() => setMode('voice')} className="btn-ghost px-7 py-2.5 text-sm rounded-xl">
-                          Begin Q&A (Voice)
-                        </button>
+                        {!focusTopic && (
+                          <button onClick={() => setMode('voice')} className="btn-ghost px-7 py-2.5 text-sm rounded-xl">
+                            Begin Q&A (Voice)
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -925,9 +1204,14 @@ export default function QAPage() {
                 <div className="border-t border-border/60 shrink-0">
                   <div className="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between gap-4">
                     <p className="text-sm text-muted">Session complete. Your debrief is above.</p>
-                    <Link href="/dashboard" className="btn-ghost text-xs">
-                      Back to Dashboard
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <button onClick={handleNewRound} className="btn-ghost text-xs">
+                        New Round →
+                      </button>
+                      <Link href="/dashboard" className="btn-ghost text-xs">
+                        Back to Dashboard
+                      </Link>
+                    </div>
                   </div>
                 </div>
               )}

@@ -2,7 +2,7 @@
 // Runs server-side only — extracts text from PDF, identifies sections via Claude
 
 import { createServerClient } from './supabase-server';
-import { callClaude } from './claude-client';
+import { callClaudeWithTool } from './claude-client';
 import { auditLog } from './auth-helpers';
 
 export async function processDocument(docId, storagePath, sessionId, userId) {
@@ -78,58 +78,40 @@ export async function processDocument(docId, storagePath, sessionId, userId) {
   }
 }
 
+const SECTION_TOOL = {
+  name: 'extract_document_sections',
+  description: 'Extract and categorise the key sections of an M&A deal document (CIM, management presentation, financial summary). Include the full text of each section found. Set a field to null if that section does not appear in the document.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      executive_summary:    { type: ['string', 'null'], description: 'Full text of the executive summary section' },
+      business_description: { type: ['string', 'null'], description: 'Full text of the business or company overview section' },
+      products_services:    { type: ['string', 'null'], description: 'Full text of the products and/or services description' },
+      market_industry:      { type: ['string', 'null'], description: 'Full text of the market or industry analysis section' },
+      customers:            { type: ['string', 'null'], description: 'Full text of the customer or client information section' },
+      financial_overview:   { type: ['string', 'null'], description: 'Full text of financial data including income statements, balance sheets, and KPIs' },
+      management_team:      { type: ['string', 'null'], description: 'Full text of management team or organisational information' },
+      growth_strategy:      { type: ['string', 'null'], description: 'Full text of growth plans, opportunities, or strategic initiatives' },
+      operations:           { type: ['string', 'null'], description: 'Full text of operational details including facilities, equipment, and processes' },
+      risk_factors:         { type: ['string', 'null'], description: 'Full text of risks, sensitivities, or known concerns' },
+      transaction_overview: { type: ['string', 'null'], description: 'Full text of deal structure, process, or timeline information' },
+      other:                { type: ['string', 'null'], description: 'Any other important content that does not fit the above categories' },
+    },
+    required: [
+      'executive_summary', 'business_description', 'products_services',
+      'market_industry', 'customers', 'financial_overview', 'management_team',
+      'growth_strategy', 'operations', 'risk_factors', 'transaction_overview', 'other',
+    ],
+  },
+};
+
 async function identifySections(fullText) {
-  // Truncate to ~100K chars for section identification (Claude can handle this)
-  const text = fullText.substring(0, 100000);
-
-  const result = await callClaude({
-    system: `You are a document structure analyzer specializing in M&A deal documents (CIMs, management presentations, financial summaries).
-
-Given the extracted text of a deal document, identify and extract the key sections. Return ONLY valid JSON, no markdown, no explanation.
-
-Required format:
-{
-  "executive_summary": "full text of executive summary section or null",
-  "business_description": "full text of business/company overview or null",
-  "products_services": "full text of products/services description or null",
-  "market_industry": "full text of market/industry analysis or null",
-  "customers": "full text of customer information or null",
-  "financial_overview": "full text of financial data, income statements, balance sheets or null",
-  "management_team": "full text of management/team information or null",
-  "growth_strategy": "full text of growth plans/opportunities or null",
-  "operations": "full text of operational details, facilities, equipment or null",
-  "risk_factors": "full text of risks, sensitivities, concerns or null",
-  "transaction_overview": "full text of deal structure, process, timeline or null",
-  "other": "any other important content not fitting above categories or null"
-}
-
-Include the FULL text of each section, not summaries. If a section doesn't exist in the document, use null.`,
-    messages: [{ role: 'user', content: text }],
+  return callClaudeWithTool({
+    system: 'You are a document structure analyser specialising in M&A deal documents. Extract every section using the provided tool. Include the full text of each section — do not summarise.',
+    messages: [{ role: 'user', content: fullText }],
+    tool: SECTION_TOOL,
     maxTokens: 8000,
   });
-
-  try {
-    // Parse the JSON response, handling potential markdown wrapping
-    const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // If Claude's response isn't valid JSON, return the full text as a single section
-    console.error('Section identification failed to parse:', e.message);
-    return {
-      executive_summary: null,
-      business_description: null,
-      products_services: null,
-      market_industry: null,
-      customers: null,
-      financial_overview: null,
-      management_team: null,
-      growth_strategy: null,
-      operations: null,
-      risk_factors: null,
-      transaction_overview: null,
-      other: fullText,
-    };
-  }
 }
 
 // Build document context for injection into prompts
