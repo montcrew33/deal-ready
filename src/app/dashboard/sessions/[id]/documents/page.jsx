@@ -295,7 +295,7 @@ export default function DocumentsPage() {
             </svg>
             Dashboard
           </Link>
-          <span className="font-semibold text-foreground tracking-tight text-sm">DealReady</span>
+          <span className="font-bold tracking-tight text-sm text-slate-900">Deal<span className="text-blue-500">Ready</span></span>
           <div className="w-24" />
         </div>
       </header>

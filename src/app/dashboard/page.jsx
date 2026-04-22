@@ -145,13 +145,7 @@ function Sidebar({ userEmail, onLogout }) {
     >
       {/* Logo */}
       <div className="px-5 pt-7 pb-8">
-        <div className="flex items-center gap-2.5">
-          <div className="relative w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-[0_2px_8px_rgba(59,130,246,0.35)]">
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/30 to-transparent" />
-            <span className="text-white relative z-10"><IcShield size={13} /></span>
-          </div>
-          <span className="text-[15px] font-semibold tracking-tight bg-gradient-to-br from-slate-900 to-slate-700 bg-clip-text text-transparent">DealReady</span>
-        </div>
+        <span className="text-[15px] font-bold tracking-tight text-slate-900">Deal<span className="text-blue-500">Ready</span></span>
       </div>
 
       {/* Nav */}

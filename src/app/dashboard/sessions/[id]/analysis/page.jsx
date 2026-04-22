@@ -971,7 +971,7 @@ export default function AnalysisPage() {
             </svg>
             {session?.company_name}
           </Link>
-          <span className="font-semibold text-foreground tracking-tight text-sm">DealReady</span>
+          <span className="font-bold tracking-tight text-sm text-slate-900">Deal<span className="text-blue-500">Ready</span></span>
           {fromQA ? (
             <Link
               href={`/dashboard/sessions/${id}/qa`}

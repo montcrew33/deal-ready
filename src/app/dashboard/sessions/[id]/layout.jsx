@@ -50,14 +50,8 @@ export default function SessionLayout({ children }) {
       <aside className="w-64 shrink-0 sticky top-0 h-screen flex flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur-xl overflow-y-auto z-20">
 
         {/* Brand bar */}
-        <div className="h-14 flex items-center px-5 border-b border-slate-200/80 shrink-0 gap-3">
-          <div className="relative w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-[0_2px_8px_rgba(59,130,246,0.30)] shrink-0">
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/30 to-transparent" />
-            <svg className="w-3.5 h-3.5 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <span className="text-sm font-semibold bg-gradient-to-br from-slate-900 to-slate-700 bg-clip-text text-transparent">DealReady</span>
+        <div className="h-14 flex items-center px-5 border-b border-slate-200/80 shrink-0">
+          <span className="text-sm font-bold tracking-tight text-slate-900">Deal<span className="text-blue-500">Ready</span></span>
         </div>
 
         {/* Back to all sessions */}

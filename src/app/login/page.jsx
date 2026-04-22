@@ -43,16 +43,8 @@ export default function LoginPage() {
 
         {/* Wordmark */}
         <div className="text-center mb-10">
-          <Link href="/" className="inline-flex flex-col items-center gap-3 group">
-            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-[0_4px_12px_rgba(59,130,246,0.30)]">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/30 to-transparent" />
-              <svg className="w-5 h-5 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-            <span className="text-2xl font-bold bg-gradient-to-br from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">
-              DealReady
-            </span>
+          <Link href="/" className="inline-block">
+            <span className="text-2xl font-bold tracking-tight text-slate-900">Deal<span className="text-blue-500">Ready</span></span>
           </Link>
           <p className="mt-2 text-sm text-muted">Sign in to your account</p>
         </div>
