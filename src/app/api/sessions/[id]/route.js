@@ -1,5 +1,6 @@
-// GET /api/sessions/[id]   — Fetch single session (owned by authed user)
-// PATCH /api/sessions/[id] — Session actions (new_round)
+// GET /api/sessions/[id]    — Fetch single session (owned by authed user)
+// PATCH /api/sessions/[id]  — Session actions (new_round)
+// DELETE /api/sessions/[id] — Delete session and all associated data
 
 import { getAuthUser, getAccessToken, unauthorizedResponse } from '@/lib/auth-helpers';
 import { createUserClient, createServerClient } from '@/lib/supabase-server';
@@ -22,6 +23,47 @@ export async function GET(request, { params }) {
   }
 
   return Response.json({ session });
+}
+
+export async function DELETE(request, { params }) {
+  const user = await getAuthUser(request);
+  if (!user) return unauthorizedResponse();
+
+  const { id } = await params;
+  const userSupabase = createUserClient(getAccessToken(request));
+
+  // Verify ownership via RLS before deleting
+  const { data: session } = await userSupabase
+    .from('sessions')
+    .select('id')
+    .eq('id', id)
+    .single();
+
+  if (!session) return Response.json({ error: 'Session not found' }, { status: 404 });
+
+  // Delete storage files for this session
+  const { data: docs } = await userSupabase
+    .from('session_documents')
+    .select('storage_path')
+    .eq('session_id', id);
+
+  if (docs?.length) {
+    const paths = docs.map(d => d.storage_path).filter(Boolean);
+    if (paths.length) {
+      await userSupabase.storage.from('documents').remove(paths);
+    }
+  }
+
+  // Delete the session (cascade deletes messages, documents, audit_log)
+  const serverSupabase = createServerClient();
+  const { error } = await serverSupabase
+    .from('sessions')
+    .delete()
+    .eq('id', id);
+
+  if (error) return Response.json({ error: 'Delete failed' }, { status: 500 });
+
+  return Response.json({ success: true });
 }
 
 export async function PATCH(request, { params }) {

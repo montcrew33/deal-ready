@@ -47,18 +47,24 @@ export default function SessionLayout({ children }) {
     <div className="flex min-h-screen bg-background">
 
       {/* ── Sidebar ── */}
-      <aside className="w-64 shrink-0 sticky top-0 h-screen flex flex-col border-r border-border/60 bg-surface/30 backdrop-blur-md overflow-y-auto z-20">
+      <aside className="w-64 shrink-0 sticky top-0 h-screen flex flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur-xl overflow-y-auto z-20">
 
         {/* Brand bar */}
-        <div className="h-14 flex items-center px-5 border-b border-border/60 shrink-0">
-          <span className="font-bold text-foreground tracking-tight text-sm">DealReady</span>
+        <div className="h-14 flex items-center px-5 border-b border-slate-200/80 shrink-0 gap-3">
+          <div className="relative w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-[0_2px_8px_rgba(59,130,246,0.30)] shrink-0">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/30 to-transparent" />
+            <svg className="w-3.5 h-3.5 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <span className="text-sm font-semibold bg-gradient-to-br from-slate-900 to-slate-700 bg-clip-text text-transparent">DealReady</span>
         </div>
 
         {/* Back to all sessions */}
         <div className="px-3 pt-3 pb-2 shrink-0">
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted hover:text-foreground hover:bg-surface-light transition-colors duration-150"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors duration-150"
           >
             <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -68,10 +74,10 @@ export default function SessionLayout({ children }) {
         </div>
 
         {/* Divider */}
-        <div className="mx-4 border-t border-border/40 mb-3 shrink-0" />
+        <div className="mx-4 border-t border-slate-200 mb-3 shrink-0" />
 
         {/* Section label */}
-        <p className="px-6 text-[10px] font-bold uppercase tracking-wider text-muted/60 mb-1.5 shrink-0">
+        <p className="px-6 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 shrink-0">
           Session
         </p>
 
@@ -86,32 +92,35 @@ export default function SessionLayout({ children }) {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group ${
                   isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted hover:text-foreground hover:bg-surface-light/50'
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-[0_2px_8px_rgba(59,130,246,0.25)]'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 {/* Icon box */}
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-150 ${
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-150 relative ${
                   isActive
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-surface-light text-muted group-hover:bg-surface group-hover:text-foreground-dim'
+                    ? 'bg-white/20 shadow-inner'
+                    : 'bg-slate-100 group-hover:bg-slate-200'
                 }`}>
-                  {icon}
+                  {isActive && <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/30 to-transparent" />}
+                  <span className="relative z-10">{icon}</span>
                 </div>
 
                 {/* Labels */}
                 <div className="flex-1 min-w-0">
                   <p className={`text-xs font-semibold leading-tight truncate ${
-                    isActive ? 'text-primary' : 'text-foreground-dim group-hover:text-foreground'
+                    isActive ? 'text-white' : 'text-slate-700 group-hover:text-slate-900'
                   }`}>
                     {label}
                   </p>
-                  <p className="text-[10px] text-muted leading-tight truncate">{sublabel}</p>
+                  <p className={`text-[10px] leading-tight truncate ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
+                    {sublabel}
+                  </p>
                 </div>
 
                 {/* Active dot */}
                 {isActive && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                  <div className="w-2 h-2 rounded-full bg-white shadow-sm shrink-0" />
                 )}
               </Link>
             );
@@ -119,8 +128,8 @@ export default function SessionLayout({ children }) {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-border/60 shrink-0">
-          <p className="text-[10px] text-muted/40 text-center">M&A Prep Platform</p>
+        <div className="p-4 border-t border-slate-200 shrink-0">
+          <p className="text-[10px] text-slate-400 text-center">M&amp;A Prep Platform</p>
         </div>
       </aside>
 

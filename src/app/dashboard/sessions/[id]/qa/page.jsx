@@ -8,12 +8,12 @@ import { toast } from 'sonner';
 // ─── Persona definitions ──────────────────────────────────────────────────────
 
 const PERSONAS = {
-  panel_lead:        { name: 'Alexandra Chen',       title: 'Managing Partner',                  initials: 'AC', color: 'bg-violet-500/15 text-violet-300 border-violet-500/25',  ring: 'shadow-[0_0_0_2.5px_rgba(139,92,246,0.5)]' },
-  pe_partner:        { name: 'Marcus Webb',           title: 'Senior Partner, Blackridge PE',     initials: 'MW', color: 'bg-blue-500/15 text-blue-300 border-blue-500/25',       ring: 'shadow-[0_0_0_2.5px_rgba(59,130,246,0.5)]' },
-  technical_cfo:     { name: 'Diane Foster',          title: 'Operating CFO, Meridian Capital',   initials: 'DF', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25',       ring: 'shadow-[0_0_0_2.5px_rgba(6,182,212,0.5)]' },
-  corp_dev:          { name: 'James Okafor',          title: 'Head of Corp Dev',                  initials: 'JO', color: 'bg-amber-500/15 text-amber-300 border-amber-500/25',    ring: 'shadow-[0_0_0_2.5px_rgba(245,158,11,0.5)]' },
-  operating_partner: { name: 'Sarah Lindqvist',       title: 'Operating Partner',                 initials: 'SL', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25', ring: 'shadow-[0_0_0_2.5px_rgba(16,185,129,0.5)]' },
-  ops_ai_expert:     { name: 'Dr. Ravi Subramaniam', title: 'Operating Principal – AI Practice', initials: 'RS', color: 'bg-rose-500/15 text-rose-300 border-rose-500/25',       ring: 'shadow-[0_0_0_2.5px_rgba(244,63,94,0.5)]' },
+  panel_lead:        { name: 'Alexandra Chen',       title: 'Managing Partner',                  initials: 'AC', color: 'bg-violet-50 text-violet-700 border-violet-200',  ring: 'shadow-[0_0_0_2.5px_rgba(139,92,246,0.5)]' },
+  pe_partner:        { name: 'Marcus Webb',           title: 'Senior Partner, Blackridge PE',     initials: 'MW', color: 'bg-blue-50 text-blue-700 border-blue-200',       ring: 'shadow-[0_0_0_2.5px_rgba(59,130,246,0.5)]' },
+  technical_cfo:     { name: 'Diane Foster',          title: 'Operating CFO, Meridian Capital',   initials: 'DF', color: 'bg-cyan-50 text-cyan-700 border-cyan-200',       ring: 'shadow-[0_0_0_2.5px_rgba(6,182,212,0.5)]' },
+  corp_dev:          { name: 'James Okafor',          title: 'Head of Corp Dev',                  initials: 'JO', color: 'bg-amber-50 text-amber-700 border-amber-200',    ring: 'shadow-[0_0_0_2.5px_rgba(245,158,11,0.5)]' },
+  operating_partner: { name: 'Sarah Lindqvist',       title: 'Operating Partner',                 initials: 'SL', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', ring: 'shadow-[0_0_0_2.5px_rgba(16,185,129,0.5)]' },
+  ops_ai_expert:     { name: 'Dr. Ravi Subramaniam', title: 'Operating Principal – AI Practice', initials: 'RS', color: 'bg-rose-50 text-rose-700 border-rose-200',       ring: 'shadow-[0_0_0_2.5px_rgba(244,63,94,0.5)]' },
 };
 const DEFAULT_PERSONA = { name: 'Panel', title: 'Buyer Panel', initials: 'P', color: 'bg-muted/15 text-muted border-border', ring: '' };
 const PANEL_ORDER = ['panel_lead', 'pe_partner', 'technical_cfo', 'corp_dev', 'operating_partner', 'ops_ai_expert'];
@@ -146,7 +146,7 @@ function Sidebar({ currentSpeaker, messages, started }) {
               <div
                 key={key}
                 className={`flex items-center gap-2.5 px-2 py-2 rounded-lg transition-all duration-200 ${
-                  isActive ? 'bg-primary/8' : 'opacity-35'
+                  isActive ? 'bg-blue-50 rounded-lg' : 'opacity-50'
                 }`}
               >
                 <div
@@ -271,11 +271,8 @@ function Message({ role, content, speaker, isStreaming }) {
     return (
       <div className="flex justify-end animate-slide-up">
         <div className="max-w-[78%]">
-          <div
-            className="rounded-2xl rounded-tr-sm px-4 py-3 border border-white/6"
-            style={{ backgroundColor: '#1A2038' }}
-          >
-            <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{content}</p>
+          <div className="rounded-2xl rounded-tr-sm px-4 py-3 bg-gradient-to-br from-blue-500 to-blue-600 shadow-[0_2px_8px_rgba(59,130,246,0.20)]">
+            <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{content}</p>
           </div>
           <p className="text-xs text-muted mt-1.5 text-right">Your answer</p>
         </div>
@@ -350,8 +347,7 @@ function PreviousRoundsModal({ rounds, sessionId, currentRound, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
       <div
-        className="rounded-2xl border border-border/60 shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[80vh]"
-        style={{ background: '#0f172a' }}
+        className="rounded-2xl border border-slate-200/60 shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[80vh] bg-white"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 shrink-0">
@@ -450,8 +446,7 @@ function PauseModal({ onResume, onReviewAnalysis, onEnd, streaming }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
       <div
-        className="rounded-2xl p-8 max-w-sm w-full mx-4 border border-border/60 shadow-2xl"
-        style={{ background: '#0f172a' }}
+        className="rounded-2xl p-8 max-w-sm w-full mx-4 border border-slate-200/60 shadow-2xl bg-white"
       >
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">

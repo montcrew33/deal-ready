@@ -10,10 +10,10 @@ import { parseAnalysis } from '@/lib/analysisParser';
 
 function sev(level) {
   switch (level) {
-    case 'critical': return { label: 'Critical', dot: 'bg-red-400',    border: 'border-l-red-500',    badge: 'bg-red-500/15 text-red-400 border-red-500/25',    icon: '⊘' };
-    case 'high':     return { label: 'High',     dot: 'bg-amber-400',  border: 'border-l-amber-500',  badge: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: '⊘' };
-    case 'medium':   return { label: 'Medium',   dot: 'bg-yellow-400', border: 'border-l-yellow-500', badge: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/25', icon: '⊘' };
-    default:         return { label: 'Low',      dot: 'bg-slate-400',  border: 'border-l-slate-500',  badge: 'bg-slate-500/15 text-slate-400 border-slate-500/25',  icon: '⊘' };
+    case 'critical': return { label: 'Critical', dot: 'bg-red-500',    border: 'border-l-red-500',    badge: 'bg-red-50 text-red-700 border-red-200',    icon: '⊘' };
+    case 'high':     return { label: 'High',     dot: 'bg-amber-500',  border: 'border-l-amber-500',  badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: '⊘' };
+    case 'medium':   return { label: 'Medium',   dot: 'bg-yellow-500', border: 'border-l-yellow-500', badge: 'bg-yellow-50 text-yellow-700 border-yellow-200', icon: '⊘' };
+    default:         return { label: 'Low',      dot: 'bg-slate-400',  border: 'border-l-slate-400',  badge: 'bg-slate-100 text-slate-600 border-slate-200',  icon: '⊘' };
   }
 }
 
@@ -79,7 +79,7 @@ function StatBar({ parsed }) {
       ),
       value: `${totalRisks} Vulnerabilities`,
       sub: criticalRisks > 0 ? `${criticalRisks} CRITICAL` : 'MAPPED',
-      subColor: criticalRisks > 0 ? 'text-red-400' : 'text-muted',
+      subColor: criticalRisks > 0 ? 'text-red-600' : 'text-muted',
     },
     {
       icon: (
@@ -89,7 +89,7 @@ function StatBar({ parsed }) {
       ),
       value: `${personaCount} Buyer Personas`,
       sub: personaCount > 0 ? 'PANEL READY' : 'NOT PARSED',
-      subColor: personaCount > 0 ? 'text-emerald-400' : 'text-muted',
+      subColor: personaCount > 0 ? 'text-emerald-600' : 'text-muted',
     },
     {
       icon: (
@@ -109,7 +109,7 @@ function StatBar({ parsed }) {
       ),
       value: 'Analysis Ready',
       sub: 'PROCEED TO Q&A',
-      subColor: 'text-emerald-400',
+      subColor: 'text-emerald-600',
     },
   ];
 
@@ -191,7 +191,7 @@ function RiskCard({ item, index }) {
 
       {open && (
         <div className="px-4 pb-4 pt-0 space-y-3">
-          <div className="h-px bg-white/5" />
+          <div className="h-px bg-slate-200" />
           {item.description && (
             <p className="text-sm text-foreground/75 leading-relaxed">
               {item.buyerFear ? <><span className="text-muted font-medium">Buyer fear: </span>{item.description}</> : item.description}
@@ -276,7 +276,7 @@ function RiskMapTab({ parsed, rawSection, positioning }) {
           <p className="text-xs font-semibold text-muted mb-2">Key Information Gaps</p>
           <div className="flex flex-wrap gap-2">
             {infoGaps.map((gap, i) => (
-              <span key={i} className="text-xs border border-red-500/25 text-red-400/80 bg-red-500/8 rounded-full px-3 py-1">
+              <span key={i} className="text-xs border border-red-200 text-red-600 bg-red-50 rounded-full px-3 py-1">
                 {gap}
               </span>
             ))}
@@ -349,12 +349,12 @@ function PersonaDossier({ persona }) {
         {/* Red flags */}
         {persona.redFlags?.length > 0 && (
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/70 mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 mb-2">
               <span className="mr-1">⚠</span>Red Flags Watching For
             </p>
             <div className="flex flex-wrap gap-1.5">
               {persona.redFlags.map((f, i) => (
-                <span key={i} className="text-[11px] border border-red-500/25 text-red-400/80 bg-red-500/8 rounded-full px-2.5 py-0.5">
+                <span key={i} className="text-[11px] border border-red-200 text-red-600 bg-red-50 rounded-full px-2.5 py-0.5">
                   {f}
                 </span>
               ))}
@@ -497,13 +497,13 @@ function PositioningTab({ parsed, rawSection }) {
 
           {mistakes.length > 0 && (
             <div className="glass rounded-xl p-5 border border-red-500/20">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/80 mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 mb-3">
                 <span className="mr-1">⊘</span>Credibility Mistakes to Avoid
               </p>
               <div className="space-y-2">
                 {mistakes.map((m, i) => (
                   <div key={i} className="flex gap-2 items-start">
-                    <svg className="w-3.5 h-3.5 text-red-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                     <p className="text-sm text-foreground/75 leading-relaxed">{m.title}{m.description ? ` — ${m.description}` : ''}</p>
@@ -551,7 +551,7 @@ function AttackZoneCard({ zone, index, sessionId }) {
 
       {open && (
         <div className="px-5 pb-5 space-y-4">
-          <div className="h-px bg-white/5" />
+          <div className="h-px bg-slate-200" />
 
           {/* Why it matters */}
           {zone.whyMatters && (
@@ -574,15 +574,15 @@ function AttackZoneCard({ zone, index, sessionId }) {
               {zone.weakTeams?.length > 0 && (
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">What Weak Teams Get Wrong</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">What Weak Teams Get Wrong</p>
                   </div>
                   <div className="space-y-1.5">
                     {zone.weakTeams.map((w, i) => (
                       <div key={i} className="flex gap-2 items-start">
-                        <svg className="w-3.5 h-3.5 text-amber-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01" />
                         </svg>
                         <p className="text-xs text-foreground/75 leading-relaxed">{w}</p>
@@ -595,15 +595,15 @@ function AttackZoneCard({ zone, index, sessionId }) {
               {zone.strongAnswer?.length > 0 && (
                 <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">What a Strong Answer Requires</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">What a Strong Answer Requires</p>
                   </div>
                   <div className="space-y-1.5">
                     {zone.strongAnswer.map((s, i) => (
                       <div key={i} className="flex gap-2 items-start">
-                        <svg className="w-3.5 h-3.5 text-emerald-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         <p className="text-xs text-foreground/75 leading-relaxed">{s}</p>

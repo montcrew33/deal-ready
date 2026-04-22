@@ -91,6 +91,8 @@ function splitIntoSections(text) {
  *   1. **Title**          ← number plain, title bold
  *   ### 1. Title          ← heading style
  *   1. Title              ← plain
+ *   #1 — Title            ← hash+number+em-dash (Claude alt format)
+ *   Zone 1 — Title        ← attack zone format
  */
 function splitNumberedItems(text) {
   if (!text) return [];
@@ -100,6 +102,22 @@ function splitNumberedItems(text) {
     // Split on --- horizontal rules between items, OR on the VULNERABILITY/RISK header lines
     return text
       .split(/\n-{3,}\n|\n(?=(?:VULNERABILITY|RISK)\s+\d+[:\.\)]\s)/i)
+      .map(p => p.trim())
+      .filter(Boolean);
+  }
+
+  // Detect "#N — Title" format (hash + number + em-dash/hyphen)
+  if (/#\d+\s*[—–-]/.test(text)) {
+    return text
+      .split(/\n-{3,}\n|\n(?=#\d+\s*[—–-])/)
+      .map(p => p.trim())
+      .filter(Boolean);
+  }
+
+  // Detect "Zone N — Title" format
+  if (/^Zone\s+\d+\s*[—–-]/im.test(text)) {
+    return text
+      .split(/\n-{3,}\n|\n(?=Zone\s+\d+\s*[—–-])/i)
       .map(p => p.trim())
       .filter(Boolean);
   }
@@ -116,6 +134,8 @@ function splitNumberedItems(text) {
 function extractItemTitle(chunk) {
   const patterns = [
     /^\s*(?:VULNERABILITY|RISK)\s+\d+[:\.\)]\s+(.+?)(?:\n|$)/i, // VULNERABILITY 1: Title
+    /^\s*#\d+\s*[—–-]\s*(.+?)(?:\n|$)/,                         // #1 — Title
+    /^\s*Zone\s+\d+\s*[—–-]\s*(.+?)(?:\n|$)/i,                  // Zone 1 — Title
     /^\s*\*\*\d+[\.\)]\s+(.+?)\*\*/,                            // **1. Title**
     /^\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,                            // 1. **Title**
     /^\s*#{1,3}\s*\d+[\.\)]\s+\*\*(.+?)\*\*/,                  // ### 1. **Title**
@@ -253,12 +273,12 @@ export function parseRiskMap(sectionText) {
 // ─── B. Persona Lens ──────────────────────────────────────────────────────────
 
 const KNOWN_PERSONAS = [
-  { key: 'panel_lead',        first: 'Alexandra', full: 'Alexandra Chen',        initials: 'AC', role: 'Managing Partner',                color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
-  { key: 'pe_partner',        first: 'Marcus',    full: 'Marcus Webb',           initials: 'MW', role: 'Senior Partner — Blackridge PE',  color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-  { key: 'technical_cfo',     first: 'Diane',     full: 'Diane Foster',          initials: 'DF', role: 'Operating CFO — Meridian Capital', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
-  { key: 'corp_dev',          first: 'James',     full: 'James Okafor',          initials: 'JO', role: 'Head of Corp Dev',                color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-  { key: 'operating_partner', first: 'Sarah',     full: 'Sarah Lindqvist',       initials: 'SL', role: 'Operating Partner',               color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
-  { key: 'ops_ai_expert',     first: 'Ravi',      full: 'Dr. Ravi Subramaniam',  initials: 'RS', role: 'Operating Principal — AI Practice', color: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+  { key: 'panel_lead',        first: 'Alexandra', full: 'Alexandra Chen',        initials: 'AC', role: 'Managing Partner',                color: 'bg-violet-100 text-violet-700 border-violet-300' },
+  { key: 'pe_partner',        first: 'Marcus',    full: 'Marcus Webb',           initials: 'MW', role: 'Senior Partner — Blackridge PE',  color: 'bg-blue-100 text-blue-700 border-blue-300' },
+  { key: 'technical_cfo',     first: 'Diane',     full: 'Diane Foster',          initials: 'DF', role: 'Operating CFO — Meridian Capital', color: 'bg-cyan-100 text-cyan-700 border-cyan-300' },
+  { key: 'corp_dev',          first: 'James',     full: 'James Okafor',          initials: 'JO', role: 'Head of Corp Dev',                color: 'bg-amber-100 text-amber-700 border-amber-300' },
+  { key: 'operating_partner', first: 'Sarah',     full: 'Sarah Lindqvist',       initials: 'SL', role: 'Operating Partner',               color: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
+  { key: 'ops_ai_expert',     first: 'Ravi',      full: 'Dr. Ravi Subramaniam',  initials: 'RS', role: 'Operating Principal — AI Practice', color: 'bg-rose-100 text-rose-700 border-rose-300' },
 ];
 
 function splitPersonaBlocks(text) {
@@ -488,10 +508,10 @@ export function parseAnalysis(part2Text) {
     const sections = splitIntoSections(part2Text);
 
     // Use isolated section text when available, fall back to full text
-    const riskMap    = parseRiskMap(sections.riskMap    || part2Text);
+    const riskMap     = parseRiskMap(sections.riskMap     || part2Text);
     const personaLens = parsePersonaLens(sections.personaLens || part2Text);
-    const positioning = parsePositioning(sections.positioning || '');
-    const attackZones = parseAttackZones(sections.attackZones || '');
+    const positioning = parsePositioning(sections.positioning || part2Text);
+    const attackZones = parseAttackZones(sections.attackZones || part2Text);
 
     return { riskMap, personaLens, positioning, attackZones, sections, parseError: null };
   } catch (err) {
