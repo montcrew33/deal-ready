@@ -190,16 +190,13 @@ function Sidebar({ userEmail, onLogout }) {
 // ─── Session card ─────────────────────────────────────────────────────────────
 
 function SessionCard({ session: s, onDelete }) {
-  const router = useRouter();
   const meta = STATUS_META[s.status] ?? STATUS_META.setup;
   const progress = getProgress(s.status);
   const href = sessionHref(s.id, s.status);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  async function handleDelete(e) {
-    e.stopPropagation();
-    e.preventDefault();
+  async function handleDelete() {
     if (!confirming) { setConfirming(true); return; }
     setDeleting(true);
     try {
@@ -223,94 +220,93 @@ function SessionCard({ session: s, onDelete }) {
   }
 
   return (
-    <div
-      onClick={() => router.push(href)}
-      className="bg-white border border-slate-200/80 shadow-sm rounded-3xl p-6 hover:bg-slate-50 transition-colors duration-300 relative overflow-hidden group cursor-pointer h-full flex flex-col"
-    >
-      {/* Subtle inner highlight on hover */}
-      <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.5) 0%, transparent 70%)' }} />
+    // Outer wrapper is the group — delete button is a sibling of the Link, not inside it
+    <div className="relative group h-full">
 
-      {/* Top row: company name + status + delete */}
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <h3 className="text-[15px] font-semibold text-slate-800 tracking-tight leading-snug line-clamp-2 flex-1">
-          {s.company_name}
-        </h3>
-        <div className="flex items-center gap-2 shrink-0 mt-0.5">
-          <div className="flex items-center gap-1.5">
-            <div className={`w-2 h-2 rounded-full shrink-0 ${meta.glow} ${meta.glowShadow}`} />
-            <span className={`text-[10px] font-semibold uppercase tracking-widest ${meta.text}`}>
-              {meta.label}
-            </span>
-          </div>
-          {/* Delete button */}
-          {confirming ? (
-            <div className="flex items-center gap-1 ml-1" onClick={e => e.stopPropagation()}>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full hover:bg-red-100 transition-colors"
-              >
-                {deleting ? '…' : 'Confirm'}
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); setConfirming(false); }}
-                className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors px-1"
-              >
-                Cancel
-              </button>
+      {/* Clickable card — navigation only */}
+      <Link href={href} className="block h-full">
+        <div className="bg-white border border-slate-200/80 shadow-sm rounded-3xl p-6 hover:bg-slate-50 transition-colors duration-300 relative overflow-hidden h-full flex flex-col">
+          <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.5) 0%, transparent 70%)' }} />
+
+          {/* Top row */}
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <h3 className="text-[15px] font-semibold text-slate-800 tracking-tight leading-snug line-clamp-2 flex-1">
+              {s.company_name}
+            </h3>
+            <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${meta.glow} ${meta.glowShadow}`} />
+              <span className={`text-[10px] font-semibold uppercase tracking-widest ${meta.text}`}>
+                {meta.label}
+              </span>
             </div>
-          ) : (
+          </div>
+
+          {/* Tags */}
+          <div className="flex flex-wrap gap-1.5 mb-5">
+            {s.industry && (
+              <span className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-0.5 font-medium">
+                {s.industry}
+              </span>
+            )}
+            {s.likely_buyer_type && (
+              <span className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-0.5 font-medium capitalize">
+                {s.likely_buyer_type.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
+
+          {/* Progress + footer */}
+          <div className="border-t border-slate-200 pt-4 mt-auto">
+            <div className="mb-3.5">
+              <div className="h-[1.5px] bg-slate-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #818cf8 0%, #22d3ee 100%)' }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">{formatDate(s.created_at)}</span>
+              <span className="text-[11px] font-semibold text-slate-400 group-hover:text-slate-700 transition-colors flex items-center gap-1">
+                {s.status === 'complete' ? 'View report' : 'Continue'} <IcChevron />
+              </span>
+            </div>
+          </div>
+        </div>
+      </Link>
+
+      {/* Delete button — outside the Link so it never triggers navigation */}
+      <div className="absolute top-3 right-3 z-10">
+        {confirming ? (
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl shadow-sm px-2 py-1">
             <button
               onClick={handleDelete}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 ml-1 p-0.5 rounded"
-              title="Delete session"
+              disabled={deleting}
+              className="text-[11px] font-semibold text-red-600 hover:text-red-700 transition-colors"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              {deleting ? '…' : 'Delete'}
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Tags */}
-      <div className="flex flex-wrap gap-1.5 mb-5">
-        {s.industry && (
-          <span className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-0.5 font-medium">
-            {s.industry}
-          </span>
-        )}
-        {s.likely_buyer_type && (
-          <span className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-0.5 font-medium capitalize">
-            {s.likely_buyer_type.replace(/_/g, ' ')}
-          </span>
-        )}
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-slate-200 pt-4 mt-auto">
-        {/* Progress */}
-        <div className="mb-3.5">
-          <div className="h-[1.5px] bg-slate-200 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${progress}%`,
-                background: 'linear-gradient(90deg, #818cf8 0%, #22d3ee 100%)',
-              }}
-            />
+            <span className="text-slate-300 text-[10px]">|</span>
+            <button
+              onClick={() => setConfirming(false)}
+              className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
-
-        {/* Date + CTA */}
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">{formatDate(s.created_at)}</span>
-          <span className="text-[11px] font-semibold text-slate-400 group-hover:text-slate-700 transition-colors flex items-center gap-1">
-            {s.status === 'complete' ? 'View report' : 'Continue'} <IcChevron />
-          </span>
-        </div>
+        ) : (
+          <button
+            onClick={handleDelete}
+            className="opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-red-500 hover:border-red-200 transition-colors"
+            title="Delete session"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
