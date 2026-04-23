@@ -199,16 +199,26 @@ function SessionCard({ session: s, onDelete }) {
 
   async function handleDelete(e) {
     e.stopPropagation();
+    e.preventDefault();
     if (!confirming) { setConfirming(true); return; }
     setDeleting(true);
     try {
       const res = await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
-      if (!res.ok) { toast.error('Delete failed'); setDeleting(false); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('Delete failed:', res.status, data);
+        toast.error(data.error || 'Delete failed');
+        setDeleting(false);
+        setConfirming(false);
+        return;
+      }
       onDelete(s.id);
       toast.success('Session deleted');
-    } catch {
+    } catch (err) {
+      console.error('Delete error:', err);
       toast.error('Delete failed');
       setDeleting(false);
+      setConfirming(false);
     }
   }
 

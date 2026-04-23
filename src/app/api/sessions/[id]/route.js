@@ -41,12 +41,15 @@ export async function DELETE(request, { params }) {
 
   if (!session) return Response.json({ error: 'Session not found' }, { status: 404 });
 
-  // Delete storage files for this session
-  const { data: docs } = await userSupabase
+  const serverSupabase = createServerClient();
+
+  // Fetch storage paths before deleting documents
+  const { data: docs } = await serverSupabase
     .from('session_documents')
     .select('storage_path')
     .eq('session_id', id);
 
+  // Delete storage files
   if (docs?.length) {
     const paths = docs.map(d => d.storage_path).filter(Boolean);
     if (paths.length) {
@@ -54,14 +57,20 @@ export async function DELETE(request, { params }) {
     }
   }
 
-  // Delete the session (cascade deletes messages, documents, audit_log)
-  const serverSupabase = createServerClient();
+  // Explicitly delete child records to avoid FK constraint failures
+  // (handles cases where ON DELETE CASCADE is not set in Supabase)
+  await serverSupabase.from('session_messages').delete().eq('session_id', id);
+  await serverSupabase.from('session_documents').delete().eq('session_id', id);
+  await serverSupabase.from('audit_log').delete().eq('session_id', id);
+
+  // Delete the session itself
   const { error } = await serverSupabase
     .from('sessions')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', user.id);
 
-  if (error) return Response.json({ error: 'Delete failed' }, { status: 500 });
+  if (error) return Response.json({ error: error.message }, { status: 500 });
 
   return Response.json({ success: true });
 }
